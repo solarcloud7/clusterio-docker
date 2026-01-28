@@ -1,0 +1,19 @@
+ARG BASE_IMAGE=solarcloud7/clusterio-docker:latest
+FROM ${BASE_IMAGE}
+
+WORKDIR /clusterio
+
+# Fix permissions for factorio user
+RUN chown -R factorio:factorio /clusterio /factorio
+
+# Note: Start script runs as root to create directories, then switches to factorio user
+# Run as root (don't set USER factorio here)
+
+# Note: Ports are configured per-instance via Clusterio and mapped in docker-compose.yml
+# Each host may run instances with different port assignments
+# See .env file for port configuration
+
+# Use mounted script for development (allows hot-reload of scripts)
+# In production, scripts are baked into the base image at /opt/scripts/
+ENTRYPOINT ["/opt/scripts/host-entrypoint.sh"]
+CMD []

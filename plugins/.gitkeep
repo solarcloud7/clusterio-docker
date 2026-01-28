@@ -1,0 +1,11 @@
+# Placeholder - add your Clusterio plugins here
+# Each plugin should be in its own subdirectory with a package.json
+#
+# Example structure:
+#   plugins/
+#   ├── surface-export/
+#   │   ├── package.json
+#   │   ├── index.js
+#   │   └── module/
+#   └── my-plugin/
+#       └── package.json

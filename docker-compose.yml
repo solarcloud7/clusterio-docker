@@ -1,0 +1,163 @@
+# Docker Compose for Clusterio
+# 
+# Pre-built images include Factorio 2.0 with all DLC (Space Age, Quality, Elevated Rails).
+# Credentials are only needed for mod portal downloads.
+#
+# Usage:
+#   docker-compose up -d          # Uses pre-built images from Docker Hub (fast)
+#   docker-compose up -d --build  # Builds images locally (for development)
+#
+# Quick Start:
+#   1. Copy .env.template to .env and fill in your values
+#   2. (Optional) Add plugins to ./plugins/
+#   3. (Optional) Add saves to ./seed-data/saves/
+#   4. (Optional) Add mods to ./seed-data/mods/
+#   5. Run: docker-compose up -d
+
+services:
+  # =====================================================
+  # Clusterio Controller
+  # =====================================================
+  clusterio-controller:
+    image: solarcloud7/clusterio-controller:latest
+    build:
+      context: .
+      dockerfile: Dockerfile.controller
+    container_name: clusterio-controller
+    hostname: clusterio-controller
+    environment:
+      - CONTROLLER_HTTP_PORT=${CONTROLLER_HTTP_PORT}
+      - FACTORIO_USERNAME=${FACTORIO_USERNAME}
+      - FACTORIO_TOKEN=${FACTORIO_TOKEN}
+    ports:
+      - "${CONTROLLER_HTTP_PORT}:${CONTROLLER_HTTP_PORT}"
+    volumes:
+      - ./data/controller:/clusterio:rw
+      - ./plugins:/opt/plugins:ro
+      - ./scripts:/opt/scripts:ro
+      # Uncomment to use your own saves/mods:
+      # - ./seed-data/saves:/opt/seed-saves:ro
+      # - ./seed-data/mods:/opt/seed-mods:ro
+    networks:
+      - clusterio-net
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "sh", "-c", "curl -f http://localhost:$$CONTROLLER_HTTP_PORT/ || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 10s
+    command: ["/opt/scripts/controller-entrypoint.sh"]
+
+  # =====================================================
+  # Cluster Initialization Service
+  # =====================================================
+  clusterio-init:
+    image: solarcloud7/clusterio-controller:latest
+    build:
+      context: .
+      dockerfile: Dockerfile.controller
+    container_name: clusterio-init
+    environment:
+      - CONTROLLER_HTTP_PORT=${CONTROLLER_HTTP_PORT}
+      - HOST1_INSTANCE1_GAME_PORT=${HOST1_INSTANCE1_GAME_PORT}
+      - HOST1_INSTANCE1_RCON_PORT=${HOST1_INSTANCE1_RCON_PORT}
+      - HOST2_INSTANCE1_GAME_PORT=${HOST2_INSTANCE1_GAME_PORT}
+      - HOST2_INSTANCE1_RCON_PORT=${HOST2_INSTANCE1_RCON_PORT}
+      - RCON_PASSWORD=${RCON_PASSWORD}
+      - MOD_PACK_FACTORIO_VERSION=${MOD_PACK_FACTORIO_VERSION:-2.0}
+      - FACTORIO_AUTO_START=${FACTORIO_AUTO_START:-false}
+      - FACTORIO_ADMINS=${FACTORIO_ADMINS}
+      - INSTANCE1_SAVE_NAME=${INSTANCE1_SAVE_NAME}
+      - INSTANCE2_SAVE_NAME=${INSTANCE2_SAVE_NAME}
+    volumes:
+      - ./data/controller:/clusterio:rw
+      - ./data/hosts:/clusterio-hosts:rw
+      - ./plugins:/opt/plugins:ro
+      - ./scripts:/opt/scripts:ro
+      # Uncomment to use your own saves/mods:
+      # - ./seed-data/saves:/opt/seed-saves:ro
+      # - ./seed-data/mods:/opt/seed-mods:ro
+    networks:
+      - clusterio-net
+    depends_on:
+      clusterio-controller:
+        condition: service_healthy
+    entrypoint: ["/bin/bash", "/opt/scripts/clusterio-init.sh"]
+    restart: "no"
+
+  # =====================================================
+  # Clusterio Host 1
+  # =====================================================
+  clusterio-host-1:
+    image: solarcloud7/clusterio-host:latest
+    build:
+      context: .
+      dockerfile: Dockerfile.host
+    container_name: clusterio-host-1
+    hostname: clusterio-host-1
+    ports:
+      - "${HOST1_INSTANCE1_GAME_PORT}:${HOST1_INSTANCE1_GAME_PORT}/udp"
+      - "${HOST1_INSTANCE1_RCON_PORT}:${HOST1_INSTANCE1_RCON_PORT}/tcp"
+    volumes:
+      - ./data/hosts/clusterio-host-1:/clusterio:rw
+      - ./plugins:/opt/plugins:ro
+      - ./scripts:/opt/scripts:ro
+    environment:
+      - HOST_NAME=clusterio-host-1
+      - FACTORIO_USERNAME=${FACTORIO_USERNAME}
+      - FACTORIO_TOKEN=${FACTORIO_TOKEN}
+      - FACTORIO_ADMINS=${FACTORIO_ADMINS}
+    networks:
+      - clusterio-net
+    depends_on:
+      clusterio-controller:
+        condition: service_healthy
+    restart: unless-stopped
+    command: ["/opt/scripts/host-entrypoint.sh"]
+
+  # =====================================================
+  # Clusterio Host 2
+  # =====================================================
+  clusterio-host-2:
+    image: solarcloud7/clusterio-host:latest
+    build:
+      context: .
+      dockerfile: Dockerfile.host
+    container_name: clusterio-host-2
+    hostname: clusterio-host-2
+    ports:
+      - "${HOST2_INSTANCE1_GAME_PORT}:${HOST2_INSTANCE1_GAME_PORT}/udp"
+      - "${HOST2_INSTANCE1_RCON_PORT}:${HOST2_INSTANCE1_RCON_PORT}/tcp"
+    volumes:
+      - ./data/hosts/clusterio-host-2:/clusterio:rw
+      - ./plugins:/opt/plugins:ro
+      - ./scripts:/opt/scripts:ro
+    environment:
+      - HOST_NAME=clusterio-host-2
+      - FACTORIO_USERNAME=${FACTORIO_USERNAME}
+      - FACTORIO_TOKEN=${FACTORIO_TOKEN}
+      - FACTORIO_ADMINS=${FACTORIO_ADMINS}
+    networks:
+      - clusterio-net
+    depends_on:
+      clusterio-controller:
+        condition: service_healthy
+    restart: unless-stopped
+    command: ["/opt/scripts/host-entrypoint.sh"]
+
+networks:
+  clusterio-net:
+    driver: bridge
+
+# Directory structure:
+#   ./
+#   ├── .env                    # Your configuration (copy from .env.template)
+#   ├── plugins/                # Custom Clusterio plugins
+#   │   └── surface-export/     # Example plugin
+#   ├── seed-data/
+#   │   ├── mods/               # Your .zip mod files
+#   │   └── saves/              # Your .zip save files
+#   └── data/                   # Runtime data (auto-created)
+#       ├── controller/
+#       └── hosts/

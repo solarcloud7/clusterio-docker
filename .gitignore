@@ -1,0 +1,19 @@
+# Runtime data
+data/
+
+# Environment file (contains secrets)
+.env
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+
+# Logs
+*.log
+
+# Temporary files
+*.tmp
