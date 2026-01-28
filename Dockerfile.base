@@ -52,7 +52,7 @@ RUN set -xeuo pipefail \
   && chown -R factorio:factorio /opt/factorio
 
 # Seed directories shared by controller/host images
-RUN mkdir -p /opt/seed-mods /opt/seed-saves /opt/seed-plugins /opt/plugins /opt/scripts /opt/patches
+RUN mkdir -p /opt/seed-mods /opt/seed-saves /opt/seed-plugins /opt/seed-config /opt/plugins /opt/scripts /opt/patches
 
 # Package built-in DLC directories as zips so they can be uploaded to Clusterio controller
 # The headless server ships with space-age, quality, and elevated-rails as unpacked directories
@@ -92,6 +92,7 @@ RUN node /opt/patches/suppress-dev-warning.js
 COPY seed-data/mods/ /opt/seed-mods/
 COPY seed-data/saves/ /opt/seed-saves/
 COPY seed-data/external_plugins/ /opt/seed-plugins/
+COPY seed-data/config/ /opt/seed-config/
 
 # Copy scripts
 COPY scripts/ /opt/scripts/

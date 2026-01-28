@@ -1,6 +1,6 @@
 # Runtime data
 data/
-
+clusterio/
 # Environment file (contains secrets)
 .env
 

@@ -5,10 +5,7 @@ WORKDIR /clusterio
 RUN mkdir -p /clusterio
 
 # Note: Ports are configured via environment variables in docker-compose.yml
-# See .env file for port configuration
-# Note: In Clusterio 2.0, WebSocket runs on the same port as HTTP
+# See .env file for port configuration (default: 8080, overridable via CONTROLLER_HTTP_PORT)
 EXPOSE 8080
 
-# Use mounted script for development (allows hot-reload of scripts)
-# In production, scripts are baked into the base image at /opt/scripts/
 ENTRYPOINT ["/opt/scripts/controller-entrypoint.sh"]

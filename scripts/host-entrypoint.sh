@@ -16,8 +16,7 @@ for dir in /clusterio/logs /clusterio/instances /clusterio/plugins; do
     }
   fi
 done
-chown -R factorio:factorio /clusterio/logs /clusterio/instances
-chown factorio:factorio /clusterio
+
 
 # Sync any plugins from /opt/plugins to the host's persistent plugin directory
 PLUGINS_SRC="/opt/plugins"
@@ -62,7 +61,6 @@ if [ ! -f "$PLUGIN_LIST" ]; then
 	["subspace_storage", "/usr/lib/node_modules/@clusterio/plugin-subspace_storage"]
 ]
 EOF
-  chown factorio:factorio "$PLUGIN_LIST"
 fi
 
 # BUGFIX: Override clusterio core modules with our fixed version (race condition fix)
@@ -73,33 +71,18 @@ cp -f /opt/clusterio_modules/impl.lua \
   echo "WARNING: Could not copy fixed impl.lua - race condition fix not applied"
 }
 
-chown -R factorio:factorio /clusterio/plugins
 
-echo "Clusterio will handle mod and save synchronization from controller"
 
-echo "Ensuring server admin list is generated from FACTORIO_ADMINS..."
-ADMIN_LIST_VALUE="${FACTORIO_ADMINS:-admin}"
-ADMIN_LIST_FILE="/clusterio/server-adminlist.json"
-ADMIN_LIST_LINK="/factorio/server-adminlist.json"
+# --- Clusterio admin/ban/whitelist import logic ---
+echo "Importing admin, whitelist, and ban lists"
 
-ADMIN_LIST_FILE="${ADMIN_LIST_FILE}" ADMIN_LIST_VALUE="${ADMIN_LIST_VALUE}" python3 <<'PY'
-import json, os, sys
-path = os.environ.get("ADMIN_LIST_FILE")
-admins_raw = os.environ.get("ADMIN_LIST_VALUE", "")
-admins = [entry.strip() for entry in admins_raw.split(",") if entry.strip()]
-if not admins:
-  admins = ["admin"]
-if not path:
-  sys.exit("ADMIN_LIST_FILE not set")
-with open(path, "w", encoding="utf-8") as fh:
-  json.dump(admins, fh, indent=2)
-PY
+SEED_CONFIG_DIR="/opt/seed-config"
 
-chown factorio:factorio "${ADMIN_LIST_FILE}"
-ln -sf "${ADMIN_LIST_FILE}" "${ADMIN_LIST_LINK}"
-chown -h factorio:factorio "${ADMIN_LIST_LINK}"
 
-# Switch to factorio user for rest of execution
+
+# Final consolidated ownership
+chown -R factorio:factorio /clusterio
+
 su -s /bin/bash factorio <<'FACTORIO_USER'
 cd /clusterio
 
