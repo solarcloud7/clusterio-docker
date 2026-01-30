@@ -1,0 +1,38 @@
+# Git
+.git
+.gitignore
+.gitattributes
+
+# IDE / Editor
+.vscode
+.idea
+.claude
+*.swp
+*.swo
+
+# Documentation (not needed in image)
+README.md
+LICENSE
+docs/
+
+# Development tools
+tools/
+*.ps1
+
+# Runtime data (should not be in build context)
+data/
+logs/
+*.log
+
+# Environment files
+.env
+env/*.env
+!env/*.env.example
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Temporary files
+*.tmp
+*.bak

@@ -1,0 +1,118 @@
+name: Build and Push Docker Images
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+    branches: [main]
+
+env:
+  REGISTRY: ghcr.io
+  CONTROLLER_IMAGE: ${{ github.repository }}-controller
+  HOST_IMAGE: ${{ github.repository }}-host
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Container Registry
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata for Controller
+        id: meta-controller
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.CONTROLLER_IMAGE }}
+          tags: |
+            type=ref,event=branch
+            type=ref,event=pr
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Extract metadata for Host
+        id: meta-host
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.HOST_IMAGE }}
+          tags: |
+            type=ref,event=branch
+            type=ref,event=pr
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Build and push Controller image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile.controller
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.meta-controller.outputs.tags }}
+          labels: ${{ steps.meta-controller.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build and push Host image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile.host
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.meta-host.outputs.tags }}
+          labels: ${{ steps.meta-host.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  # Optional: Test the built images
+  test:
+    needs: build
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up test environment
+        run: |
+          cp env/controller.env.example env/controller.env
+          cp env/host.env.example env/host.env
+          echo "INIT_CLUSTERIO_ADMIN=testadmin" >> env/controller.env
+
+      - name: Build images
+        run: docker compose build
+
+      - name: Start services
+        run: docker compose up -d
+
+      - name: Wait for controller health
+        run: |
+          timeout 120 bash -c 'until docker inspect --format="{{.State.Health.Status}}" clusterio-controller | grep -q healthy; do sleep 5; done'
+
+      - name: Check services are running
+        run: docker compose ps
+
+      - name: Show logs on failure
+        if: failure()
+        run: docker compose logs
+
+      - name: Cleanup
+        if: always()
+        run: docker compose down -v

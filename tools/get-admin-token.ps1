@@ -1,27 +1,40 @@
 $ErrorActionPreference = "Stop"
 
-$WorkspaceRoot = Resolve-Path "$PSScriptRoot/.."
-$ConfigControlPath = Join-Path $WorkspaceRoot "data/controller/config-control.json"
-
-if (Test-Path $ConfigControlPath) {
-    $ConfigControl = Get-Content $ConfigControlPath -Raw | ConvertFrom-Json
-    $Token = $ConfigControl.'control.controller_token'
-    
-    Write-Host ""
-    Write-Host "Admin Token:" -ForegroundColor Yellow
-    Write-Host $Token -ForegroundColor White
-    Write-Host ""
-    
-    # Copy to clipboard if available
-    try {
-        $Token | Set-Clipboard
-        Write-Host "(Copied to clipboard)" -ForegroundColor Green
-    } catch {
-        # Clipboard not available
+# Get admin username from env file or use default
+$EnvFile = Join-Path $PSScriptRoot "..\env\controller.env"
+$AdminUser = "admin"
+if (Test-Path $EnvFile) {
+    $EnvContent = Get-Content $EnvFile
+    foreach ($line in $EnvContent) {
+        if ($line -match "^INIT_CLUSTERIO_ADMIN=(.+)$") {
+            $AdminUser = $Matches[1].Trim()
+            break
+        }
     }
-} else {
-    Write-Host "config-control.json not found at $ConfigControlPath" -ForegroundColor Yellow
-    Write-Host ""
-    Write-Host "The controller may not have started yet. Try:" -ForegroundColor Yellow
-    Write-Host "  docker exec clusterio-controller npx clusteriocontroller --log-level error bootstrap generate-user-token admin" -ForegroundColor Cyan
 }
+
+Write-Host ""
+Write-Host "Generating admin token for user: $AdminUser" -ForegroundColor Cyan
+
+# Generate token via docker exec
+$Token = docker exec clusterio-controller npx clusteriocontroller --log-level error bootstrap generate-user-token $AdminUser 2>&1
+
+if ($LASTEXITCODE -ne 0) {
+    Write-Host "Failed to generate token. Is the controller running?" -ForegroundColor Red
+    Write-Host $Token -ForegroundColor Yellow
+    exit 1
+}
+
+Write-Host ""
+Write-Host "Admin Token:" -ForegroundColor Yellow
+Write-Host $Token -ForegroundColor White
+Write-Host ""
+
+# Copy to clipboard if available
+try {
+    $Token | Set-Clipboard
+    Write-Host "(Copied to clipboard)" -ForegroundColor Green
+} catch {
+    # Clipboard not available
+}
+

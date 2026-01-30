@@ -1,8 +1,13 @@
 # Runtime data
 data/
 clusterio/
+logs/
+plugins/
+
 # Environment file (contains secrets)
 .env
+env/*.env
+!env/*.env.example
 
 # OS files
 .DS_Store
@@ -10,6 +15,8 @@ Thumbs.db
 
 # IDE
 .idea/
+.vscode/
+.claude/
 
 # Logs
 *.log
