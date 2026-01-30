@@ -4,6 +4,13 @@
 
 FROM node:24-bookworm-slim
 
+# OCI Image Labels
+LABEL org.opencontainers.image.source="https://github.com/solarcloud7/clusterio-docker" \
+      org.opencontainers.image.title="Clusterio Host" \
+      org.opencontainers.image.description="Clusterio host with Factorio headless server" \
+      org.opencontainers.image.licenses="MIT" \
+      org.opencontainers.image.vendor="solarcloud7"
+
 # Build arguments for host configuration
 ARG FACTORIO_HEADLESS_TAG=stable
 ARG CONTROLLER_URL=http://localhost:8080/
