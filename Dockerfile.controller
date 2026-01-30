@@ -1,14 +1,60 @@
-ARG BASE_IMAGE=solarcloud7/clusterio-docker:latest
-FROM ${BASE_IMAGE}
+# Clusterio Controller - Standalone Installation
+# This container runs the Clusterio controller (web UI, API, cluster coordination)
+FROM node:24-bookworm-slim
+
+# Build arguments for controller configuration
+ARG INIT_CLUSTERIO_ADMIN
+ARG CONTROLLER_HTTP_PORT=8080
+ARG CONTROLLER_PUBLIC_ADDRESS=http://localhost:8080/
+
+# Environment variables (can be overridden at runtime)
+ENV NODE_ENV=production \
+    NPM_CONFIG_UPDATE_NOTIFIER=false \
+    CLUSTERIO_SUPPRESS_DEV_WARNING=1
+
+# Install OS dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates \
+    curl \
+    python3 \
+    gosu \
+ && rm -rf /var/lib/apt/lists/*
+
+# Create clusterio user and directory
+RUN useradd -m -s /bin/bash clusterio && \
+    mkdir -p /clusterio && \
+    chown clusterio:clusterio /clusterio
 
 WORKDIR /clusterio
-RUN mkdir -p /clusterio
 
-# Note: Ports are configured via environment variables in docker-compose.yml
-# See .env file for port configuration
-# Note: In Clusterio 2.0, WebSocket runs on the same port as HTTP
-EXPOSE 8080
+# Switch to clusterio user for npm install
+USER clusterio
 
-# Use mounted script for development (allows hot-reload of scripts)
-# In production, scripts are baked into the base image at /opt/scripts/
-ENTRYPOINT ["/opt/scripts/controller-entrypoint.sh"]
+# Install Clusterio controller package and plugins
+RUN npm install \
+    @clusterio/controller \
+    @clusterio/ctl \
+    @clusterio/plugin-global_chat \
+    @clusterio/plugin-inventory_sync \
+    @clusterio/plugin-player_auth \
+    @clusterio/plugin-research_sync \
+    @clusterio/plugin-statistics_exporter \
+    @clusterio/plugin-subspace_storage
+
+# Suppress the development warning banner
+COPY --chown=clusterio:clusterio scripts/suppress-dev-warning.js /tmp/suppress-dev-warning.js
+RUN node /tmp/suppress-dev-warning.js && rm /tmp/suppress-dev-warning.js
+
+# Configure controller settings
+RUN npx clusteriocontroller config set controller.http_port ${CONTROLLER_HTTP_PORT} && \
+    npx clusteriocontroller config set controller.external_address ${CONTROLLER_PUBLIC_ADDRESS}
+
+# Expose the controller port
+EXPOSE ${CONTROLLER_HTTP_PORT}
+
+# Switch back to root for entrypoint (gosu will drop to clusterio)
+USER root
+
+COPY --chmod=755 scripts/controller-entrypoint.sh /controller-entrypoint.sh
+
+ENTRYPOINT ["/controller-entrypoint.sh"]

@@ -1,19 +1,72 @@
-ARG BASE_IMAGE=solarcloud7/clusterio-docker:latest
-FROM ${BASE_IMAGE}
+# Clusterio Host - Standalone Installation
+# This container runs Clusterio host with Factorio headless server
+# Connects to a controller and runs game instances
+
+FROM node:24-bookworm-slim
+
+# Build arguments for host configuration
+ARG FACTORIO_HEADLESS_TAG=stable
+ARG CONTROLLER_URL=http://localhost:8080/
+ARG HOST_FACTORIO_PORT_RANGE=34100-34199
+
+# Environment variables (can be overridden at runtime)
+ENV CONTROLLER_URL=${CONTROLLER_URL} \
+    HOST_FACTORIO_PORT_RANGE=${HOST_FACTORIO_PORT_RANGE} \
+    FACTORIO_HOME=/opt/factorio \
+    NODE_ENV=production \
+    NPM_CONFIG_UPDATE_NOTIFIER=false \
+    CLUSTERIO_SUPPRESS_DEV_WARNING=1
+
+# Install OS dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates \
+    curl \
+    xz-utils \
+    gosu \
+ && rm -rf /var/lib/apt/lists/*
+
+# Download and install Factorio headless server
+RUN curl -fsSL "https://factorio.com/get-download/${FACTORIO_HEADLESS_TAG}/headless/linux64" -o /tmp/factorio.tar.xz \
+ && tar -xJf /tmp/factorio.tar.xz -C /opt \
+ && rm /tmp/factorio.tar.xz
+
+# Create clusterio user and directory
+RUN useradd -m -s /bin/bash clusterio && \
+    mkdir -p /clusterio && \
+    chown clusterio:clusterio /clusterio /opt/factorio
 
 WORKDIR /clusterio
 
-# Fix permissions for factorio user
-RUN chown -R factorio:factorio /clusterio /factorio
+# Switch to clusterio user for npm install
+USER clusterio
 
-# Note: Start script runs as root to create directories, then switches to factorio user
-# Run as root (don't set USER factorio here)
+# Install Clusterio packages directly
+RUN npm install \
+    @clusterio/host \
+    @clusterio/ctl \
+    @clusterio/plugin-global_chat \
+    @clusterio/plugin-inventory_sync \
+    @clusterio/plugin-player_auth \
+    @clusterio/plugin-research_sync \
+    @clusterio/plugin-statistics_exporter \
+    @clusterio/plugin-subspace_storage
 
-# Note: Ports are configured per-instance via Clusterio and mapped in docker-compose.yml
-# Each host may run instances with different port assignments
-# See .env file for port configuration
+# Suppress the development warning banner
+COPY --chown=clusterio:clusterio scripts/suppress-dev-warning.js /tmp/suppress-dev-warning.js
+RUN node /tmp/suppress-dev-warning.js && rm /tmp/suppress-dev-warning.js
 
-# Use mounted script for development (allows hot-reload of scripts)
-# In production, scripts are baked into the base image at /opt/scripts/
-ENTRYPOINT ["/opt/scripts/host-entrypoint.sh"]
-CMD []
+RUN npx clusteriohost config set host.controller_url ${CONTROLLER_URL} && \
+    npx clusteriohost config set host.factorio_directory /opt/factorio && \
+    npx clusteriohost config set host.allow_remote_updates false && \
+    npx clusteriohost config set host.allow_plugin_updates false
+
+# Switch back to root for entrypoint (gosu will drop to clusterio)
+USER root
+
+COPY scripts/host-entrypoint.sh /host-entrypoint.sh
+RUN chmod +x /host-entrypoint.sh
+
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+  CMD pgrep -x node || exit 1
+
+ENTRYPOINT ["/host-entrypoint.sh"]
