@@ -2,6 +2,7 @@
 .git
 .gitignore
 .gitattributes
+.github
 
 # IDE / Editor
 .vscode
@@ -14,6 +15,9 @@
 README.md
 LICENSE
 docs/
+
+# Seed data (mounted at runtime, not baked into image)
+seed-data/
 
 # Development tools
 tools/

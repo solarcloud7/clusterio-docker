@@ -10,12 +10,11 @@ LABEL org.opencontainers.image.source="https://github.com/solarcloud7/clusterio-
       org.opencontainers.image.vendor="solarcloud7"
 
 # Build arguments for controller configuration
-ARG INIT_CLUSTERIO_ADMIN
 ARG CONTROLLER_HTTP_PORT=8080
-ARG CONTROLLER_PUBLIC_ADDRESS=http://localhost:8080/
 
 # Environment variables (can be overridden at runtime)
-ENV NODE_ENV=production \
+ENV CONTROLLER_HTTP_PORT=${CONTROLLER_HTTP_PORT} \
+    NODE_ENV=production \
     NPM_CONFIG_UPDATE_NOTIFIER=false \
     CLUSTERIO_SUPPRESS_DEV_WARNING=1
 
@@ -60,6 +59,12 @@ EXPOSE ${CONTROLLER_HTTP_PORT}
 # Switch back to root for entrypoint (gosu will drop to clusterio)
 USER root
 
+COPY --chmod=755 scripts/install-plugins.sh /scripts/install-plugins.sh
+COPY --chmod=755 scripts/seed-mods.sh /scripts/seed-mods.sh
+COPY --chmod=755 scripts/seed-instances.sh /scripts/seed-instances.sh
 COPY --chmod=755 scripts/controller-entrypoint.sh /controller-entrypoint.sh
+
+HEALTHCHECK --interval=10s --timeout=3s --start-period=30s --retries=6 \
+  CMD curl -sf http://localhost:${CONTROLLER_HTTP_PORT:-8080}/ || exit 1
 
 ENTRYPOINT ["/controller-entrypoint.sh"]

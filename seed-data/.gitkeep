@@ -3,8 +3,12 @@
 # Structure:
 #   seed-data/
 #   ├── controller/
-#   │   └── config.json           # Optional controller config overrides
-#   └── hosts/
+#   │   └── database/             # Database files (copied before controller starts)
+#   │       ├── users.json        # Pre-create user accounts
+#   │       └── roles.json        # Custom permission roles
+#   ├── mods/                     # Factorio mod .zip files (uploaded to controller)
+#   │   └── my-mod_1.0.0.zip
+#   ├── hosts/
 #       ├── clusterio-host-1/     # Must match docker-compose hostname
 #       │   ├── MyInstance/
 #       │   │   └── world.zip     # Save file to load on creation
@@ -13,10 +17,14 @@
 #       └── clusterio-host-2/
 #           └── Instance3/
 #               └── backup.zip
+#   └── external_plugins/         # External plugin packages
 #
 # On first run:
+#   - Database files are copied BEFORE controller starts (users, roles)
+#   - Mod .zips are uploaded to the controller via API
 #   - Host folders must match docker-compose hostnames exactly
-#   - Each subdirectory becomes an instance assigned to that host
-#   - Any .zip files are uploaded as saves
+#   - Instance folders are created via API AFTER controller starts
+#   - Any .zip files in instance folders are uploaded as saves
+#   - Instances auto-start by default (override with config.json)
 #
 # See docs/seed-data.md for full documentation

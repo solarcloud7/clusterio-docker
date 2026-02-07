@@ -10,9 +10,11 @@ Docker images for running [Clusterio](https://github.com/clusterio/clusterio) - 
 - [Volume Mounts](#volume-mounts)
 - [Environment Variables](#environment-variables)
 - [Getting Host Tokens](#getting-host-tokens)
+- [Seed Data](#seed-data)
 - [Viewing Logs](#viewing-logs)
 - [Prometheus Metrics](#prometheus-metrics)
 - [Included Plugins](#included-plugins)
+- [External Plugins](#external-plugins)
 - [Architecture](#architecture)
 - [Troubleshooting](#troubleshooting)
 - [Building Locally](#building-locally)
@@ -94,8 +96,10 @@ Each container uses a single data volume for all persistent storage:
 |-----------|--------------|----------|
 | Controller | `/clusterio/data` | Config, database, mods, logs |
 | Controller | `/clusterio/tokens` | Generated host tokens (shared) |
+| Controller | `/clusterio/seed-data` | Seed data for first run (read-only bind mount) |
 | Host | `/clusterio/data` | Config, instances, mods, logs |
 | Host | `/clusterio/tokens` | Token from controller (read-only) |
+| Host | `/clusterio/seed-mods` | Mod cache from seed data (read-only bind mount) |
 
 ### Data Volume Structure
 
@@ -143,7 +147,8 @@ docker run -d -p 34100-34199:34100-34199/udp \
 |----------|---------|-------------|
 | `INIT_CLUSTERIO_ADMIN` | *(required)* | Admin username for first run |
 | `CONTROLLER_HTTP_PORT` | `8080` | Web UI / API port |
-| `CONTROLLER_PUBLIC_ADDRESS` | `http://localhost:8080/` | Public URL for web UI |
+| `CONTROLLER_PUBLIC_ADDRESS` | *(unset)* | Public URL for external access (standalone usage) |
+| `HOST_COUNT` | `0` (standalone) / `2` (compose) | Number of host tokens to generate |
 
 ### Host
 
@@ -152,7 +157,6 @@ docker run -d -p 34100-34199:34100-34199/udp \
 | `CLUSTERIO_HOST_TOKEN` | *(auto from shared volume)* | Host authentication token |
 | `CONTROLLER_URL` | `http://clusterio-controller:8080/` | Controller URL |
 | `HOST_NAME` | Container hostname | Host identifier (must match token file name) |
-| `HOST_COUNT` | `0` (standalone) / `2` (compose) | Number of host tokens to auto-generate |
 
 ---
 
@@ -198,6 +202,33 @@ For standalone containers or custom host names:
 
 ---
 
+## Seed Data
+
+Pre-populate your cluster with users, roles, mods, instances, and saves on first run using the `seed-data/` folder convention:
+
+```
+seed-data/
+├── controller/
+│   └── database/          # users.json, roles.json (copied before controller starts)
+├── mods/                  # Factorio mod .zip files (uploaded to controller)
+└── hosts/
+    └── clusterio-host-1/  # Must match docker-compose hostname
+        └── MyInstance/
+            └── world.zip  # Save file to upload
+```
+
+On first run (clean volumes), the controller automatically:
+1. Seeds database files (users, roles)
+2. Uploads mods to the controller
+3. Creates instances, assigns them to hosts, uploads saves
+4. Starts instances automatically (override with `config.json`)
+
+Hosts pre-cache mods locally from the seed-data mount on every startup for faster instance starts.
+
+> See [docs/seed-data.md](docs/seed-data.md) for full documentation including examples, config options, and troubleshooting.
+
+---
+
 ## Viewing Logs
 
 ### Dozzle
@@ -230,7 +261,7 @@ docker logs -t clusterio-controller
 
 ## Prometheus Metrics
 
-The docker-compose setup includes a Prometheus container for collecting metrics from the `statistics_exporter` plugin.
+The docker-compose setup includes an optional (commented-out) Prometheus container for collecting metrics from the `statistics_exporter` plugin. Uncomment the `prometheus` service in `docker-compose.yml` to enable it.
 
 ### Access
 
@@ -281,6 +312,16 @@ Both images include these official plugins:
 - `research_sync` - Sync research progress
 - `statistics_exporter` - Prometheus metrics
 - `subspace_storage` - Shared item storage
+
+---
+
+## External Plugins
+
+To use external Clusterio plugins, mount a plugins directory into the containers:
+
+1. Uncomment the external plugins volume in `docker-compose.yml` for the controller and each host
+2. Place plugin directories (each containing a `package.json`) in the `plugins/` folder
+3. Plugins are automatically installed on container startup
 
 ---
 

@@ -36,8 +36,9 @@ wait_for_hosts() {
   echo "Waiting for $expected host(s) to connect..."
   for i in $(seq 1 "$max_attempts"); do
     local connected
+    # Count data rows where the 'connected' column is 'true' (skip header row)
     connected=$(gosu clusterio npx clusterioctl --log-level error host list \
-      --config "$CONTROL_CONFIG" 2>/dev/null | grep -c "connected" || true)
+      --config "$CONTROL_CONFIG" 2>/dev/null | grep -c "| true " || true)
     connected=${connected:-0}
 
     if [ "$connected" -ge "$expected" ]; then

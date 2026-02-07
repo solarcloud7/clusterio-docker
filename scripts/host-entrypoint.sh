@@ -6,6 +6,8 @@ DATA_DIR="/clusterio/data"
 CONFIG_PATH="$DATA_DIR/config-host.json"
 TOKENS_DIR="/clusterio/tokens"
 EXTERNAL_PLUGINS_DIR="/clusterio/external_plugins"
+SEED_MODS_DIR="/clusterio/seed-mods"
+HOST_MODS_DIR="/clusterio/mods"
 
 # Use HOST_NAME env var, fallback to hostname
 HOST_NAME="${HOST_NAME:-$(hostname)}"
@@ -20,16 +22,27 @@ mkdir -p "$DATA_DIR"
 chown -R clusterio:clusterio "$DATA_DIR"
 
 # Handle external plugins if mounted
-if [ -d "$EXTERNAL_PLUGINS_DIR" ] && [ "$(ls -A $EXTERNAL_PLUGINS_DIR 2>/dev/null)" ]; then
-  echo "External plugins detected, installing..."
-  chown -R clusterio:clusterio "$EXTERNAL_PLUGINS_DIR"
-  for plugin in "$EXTERNAL_PLUGINS_DIR"/*/; do
-    if [ -f "${plugin}package.json" ]; then
-      plugin_name=$(basename "$plugin")
-      echo "  Installing plugin: $plugin_name"
-      (cd "$plugin" && gosu clusterio npm install --omit=dev 2>/dev/null || true)
-    fi
-  done
+source /scripts/install-plugins.sh
+install_external_plugins "$EXTERNAL_PLUGINS_DIR"
+
+# Pre-cache seed mods so the host doesn't need to download them from the controller.
+# Runs on every startup (not just first run) since the mods dir may be ephemeral.
+if [ -d "$SEED_MODS_DIR" ]; then
+  shopt -s nullglob
+  MOD_FILES=("$SEED_MODS_DIR"/*.zip)
+  shopt -u nullglob
+  if [ ${#MOD_FILES[@]} -gt 0 ]; then
+    mkdir -p "$HOST_MODS_DIR"
+    echo "Pre-caching ${#MOD_FILES[@]} mod(s) from seed data..."
+    for mod_file in "${MOD_FILES[@]}"; do
+      mod_name=$(basename "$mod_file")
+      if [ ! -f "$HOST_MODS_DIR/$mod_name" ]; then
+        cp "$mod_file" "$HOST_MODS_DIR/$mod_name"
+        echo "  Cached: $mod_name"
+      fi
+    done
+    chown -R clusterio:clusterio "$HOST_MODS_DIR"
+  fi
 fi
 
 get_token() {
