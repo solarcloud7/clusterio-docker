@@ -8,8 +8,9 @@
 #      - container_name & hostname: clusterio-host-N
 #      - HOST_NAME: clusterio-host-N (MUST match for auto-token loading)
 #      - Ports: 34N00-34N09:34N00-34N09/udp
-#      - Volumes: host-N-instances, host-N-logs
-#   3. Add corresponding volumes at the bottom
+#      - Volume: host-N-data
+#   3. Add host-N-data volume at the bottom
+#   4. Include the seed-mods mount: ./seed-data/mods:/clusterio/seed-mods:ro
 #
 # IMPORTANT: Host names MUST follow the pattern "clusterio-host-N" for
 # automatic token loading. The host extracts its ID from the name.
@@ -22,7 +23,6 @@ x-host-base: &host-base
     dockerfile: Dockerfile.host
     args:
       FACTORIO_HEADLESS_TAG: ${FACTORIO_HEADLESS_TAG:-stable}
-      CONTROLLER_URL: ${CONTROLLER_URL:-http://clusterio-controller:8080/}
   env_file:
     - env/host.env
   networks:
@@ -31,6 +31,8 @@ x-host-base: &host-base
     clusterio-controller:
       condition: service_healthy
   restart: unless-stopped
+  # To use external plugins, add to each host's volumes:
+  # - ./plugins:/clusterio/external_plugins:ro
 
 services:
   clusterio-controller:
@@ -38,9 +40,7 @@ services:
       context: .
       dockerfile: Dockerfile.controller
       args:
-        INIT_CLUSTERIO_ADMIN: ${INIT_CLUSTERIO_ADMIN}
         CONTROLLER_HTTP_PORT: ${CONTROLLER_HTTP_PORT:-8080}
-        CONTROLLER_PUBLIC_ADDRESS: ${CONTROLLER_PUBLIC_ADDRESS:-http://localhost:8080/}
     env_file:
       - env/controller.env
     container_name: clusterio-controller
@@ -48,22 +48,21 @@ services:
     ports:
       - "${CONTROLLER_HTTP_PORT:-8080}:${CONTROLLER_HTTP_PORT:-8080}"
     volumes:
-      - controller-database:/clusterio/database
-      - controller-mods:/clusterio/mods
-      - controller-logs:/clusterio/logs
+      - controller-data:/clusterio/data
       - shared-tokens:/clusterio/tokens
+      - ./seed-data:/clusterio/seed-data:ro         # Seed instances on first run
+      # - ./plugins:/clusterio/external_plugins:ro  # Uncomment for external plugins
     environment:
-      - CLUSTERIO_ADMIN=${CLUSTERIO_ADMIN:-admin}
       - HOST_COUNT=${HOST_COUNT:-2}
     networks:
       - clusterio-net
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:${CONTROLLER_HTTP_PORT:-8080}/"]
-      interval: 5s
+      test: ["CMD", "curl", "-sf", "http://localhost:${CONTROLLER_HTTP_PORT:-8080}/"]
+      interval: 10s
       timeout: 3s
-      retries: 12
-      start_period: 10s
+      retries: 6
+      start_period: 30s
 
   # -------------------------------------------------------------------------
   # Host 1 - Port range 34100-34199
@@ -77,9 +76,9 @@ services:
     ports:
       - "34100-34109:34100-34109/udp"
     volumes:
-      - host-1-instances:/clusterio/instances
-      - host-1-logs:/clusterio/logs
+      - host-1-data:/clusterio/data
       - shared-tokens:/clusterio/tokens:ro
+      - ./seed-data/mods:/clusterio/seed-mods:ro
 
   # -------------------------------------------------------------------------
   # Host 2 - Port range 34200-34299
@@ -93,48 +92,36 @@ services:
     ports:
       - "34200-34209:34200-34209/udp"
     volumes:
-      - host-2-instances:/clusterio/instances
-      - host-2-logs:/clusterio/logs
+      - host-2-data:/clusterio/data
       - shared-tokens:/clusterio/tokens:ro
+      - ./seed-data/mods:/clusterio/seed-mods:ro
 
   # -------------------------------------------------------------------------
-  # To add Host 3, uncomment and adjust:
+  # Prometheus - Metrics collection (optional)
   # -------------------------------------------------------------------------
-  # clusterio-host-3:
-  #   <<: *host-base
-  #   container_name: clusterio-host-3
-  #   hostname: clusterio-host-3
-  #   environment:
-  #     - HOST_NAME=clusterio-host-3
-  #   ports:
-  #     - "34300-34309:34300-34309/udp"
+  # prometheus:
+  #   image: prom/prometheus
+  #   container_name: clusterio-prometheus
+  #   hostname: prometheus
   #   volumes:
-  #     - host-3-instances:/clusterio/instances
-  #     - host-3-logs:/clusterio/logs
-  #     - shared-tokens:/clusterio/tokens:ro
+  #     - ./scripts/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+  #     - prometheus-data:/prometheus
+  #   ports:
+  #     - "9090:9090"
+  #   networks:
+  #     - clusterio-net
+  #   depends_on:
+  #     - clusterio-controller
+  #   restart: unless-stopped
 
 networks:
   clusterio-net:
     driver: bridge
 
 volumes:
-  # Controller volumes
-  controller-database:
-  controller-mods:
-  controller-logs:
-  
-  # Host 1 volumes
-  host-1-instances:
-  host-1-logs:
-
-  # Host 2 volumes
-  host-2-instances:
-  host-2-logs:
-
-  # Host 3 volumes (uncomment when adding host 3)
-  # host-3-instances:
-  # host-3-logs:
-
-  # Shared
-  shared-tokens:
+  controller-data:    # All controller persistent data
+  host-1-data:        # Host 1 persistent data (config, instances, logs)
+  host-2-data:        # Host 2 persistent data
+  prometheus-data:    # Prometheus metrics storage
+  shared-tokens:      # Token exchange between controller and hosts
   

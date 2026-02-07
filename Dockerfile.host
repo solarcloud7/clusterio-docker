@@ -4,15 +4,18 @@
 
 FROM node:24-bookworm-slim
 
+# OCI Image Labels
+LABEL org.opencontainers.image.source="https://github.com/solarcloud7/clusterio-docker" \
+      org.opencontainers.image.title="Clusterio Host" \
+      org.opencontainers.image.description="Clusterio host with Factorio headless server" \
+      org.opencontainers.image.licenses="MIT" \
+      org.opencontainers.image.vendor="solarcloud7"
+
 # Build arguments for host configuration
 ARG FACTORIO_HEADLESS_TAG=stable
-ARG CONTROLLER_URL=http://localhost:8080/
-ARG HOST_FACTORIO_PORT_RANGE=34100-34199
 
 # Environment variables (can be overridden at runtime)
-ENV CONTROLLER_URL=${CONTROLLER_URL} \
-    HOST_FACTORIO_PORT_RANGE=${HOST_FACTORIO_PORT_RANGE} \
-    FACTORIO_HOME=/opt/factorio \
+ENV FACTORIO_HOME=/opt/factorio \
     NODE_ENV=production \
     NPM_CONFIG_UPDATE_NOTIFIER=false \
     CLUSTERIO_SUPPRESS_DEV_WARNING=1
@@ -55,18 +58,15 @@ RUN npm install \
 COPY --chown=clusterio:clusterio scripts/suppress-dev-warning.js /tmp/suppress-dev-warning.js
 RUN node /tmp/suppress-dev-warning.js && rm /tmp/suppress-dev-warning.js
 
-RUN npx clusteriohost config set host.controller_url ${CONTROLLER_URL} && \
-    npx clusteriohost config set host.factorio_directory /opt/factorio && \
-    npx clusteriohost config set host.allow_remote_updates false && \
-    npx clusteriohost config set host.allow_plugin_updates false
+# Note: Host config is set at runtime in entrypoint to persist in volume
 
 # Switch back to root for entrypoint (gosu will drop to clusterio)
 USER root
 
-COPY scripts/host-entrypoint.sh /host-entrypoint.sh
-RUN chmod +x /host-entrypoint.sh
+COPY --chmod=755 scripts/install-plugins.sh /scripts/install-plugins.sh
+COPY --chmod=755 scripts/host-entrypoint.sh /host-entrypoint.sh
 
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
-  CMD pgrep -x node || exit 1
+  CMD test -f /clusterio/data/config-host.json || exit 1
 
 ENTRYPOINT ["/host-entrypoint.sh"]

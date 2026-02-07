@@ -80,11 +80,10 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-  # Optional: Test the built images
+  # Test the built images
   test:
     needs: build
     runs-on: ubuntu-latest
-    if: github.event_name == 'pull_request'
     
     steps:
       - name: Checkout repository
@@ -96,6 +95,19 @@ jobs:
           cp env/host.env.example env/host.env
           echo "INIT_CLUSTERIO_ADMIN=testadmin" >> env/controller.env
 
+          # Create database seed from examples
+          cp seed-data/controller/database/users.example.json seed-data/controller/database/users.json
+          cp seed-data/controller/database/roles.example.json seed-data/controller/database/roles.json
+          sed -i 's/your_admin_username/testadmin/' seed-data/controller/database/users.json
+
+          # Test fixtures are committed to the repo:
+          #   seed-data/hosts/clusterio-host-1/TestInstance/dummy.zip  (test save)
+          #   seed-data/mods/squeak-through-2_0.1.3.zip               (test mod)
+
+          # Add a second instance on host-2 with auto_start disabled
+          mkdir -p seed-data/hosts/clusterio-host-2/StoppedInstance
+          echo '{"auto_start": false}' > seed-data/hosts/clusterio-host-2/StoppedInstance/config.json
+
       - name: Build images
         run: docker compose build
 
@@ -106,8 +118,75 @@ jobs:
         run: |
           timeout 120 bash -c 'until docker inspect --format="{{.State.Health.Status}}" clusterio-controller | grep -q healthy; do sleep 5; done'
 
-      - name: Check services are running
-        run: docker compose ps
+      - name: Wait for hosts to be running
+        run: |
+          timeout 120 bash -c 'until docker inspect --format="{{.State.Health.Status}}" clusterio-host-1 | grep -q healthy; do sleep 5; done'
+          timeout 120 bash -c 'until docker inspect --format="{{.State.Health.Status}}" clusterio-host-2 | grep -q healthy; do sleep 5; done'
+
+      - name: Wait for seed completion
+        run: |
+          echo "Waiting for instance seeding to complete..."
+          timeout 120 bash -c 'until docker logs clusterio-controller 2>&1 | grep -q "Instance seeding complete"; do sleep 5; done'
+
+      - name: Verify database seeding
+        run: |
+          echo "=== Verify admin user was seeded ==="
+          docker exec clusterio-controller npx clusterioctl \
+            --config /clusterio/tokens/config-control.json \
+            user list 2>/dev/null | grep -q "testadmin" \
+            && echo "PASS: Admin user 'testadmin' exists" \
+            || { echo "FAIL: Admin user not found"; exit 1; }
+
+      - name: Verify mod seeding
+        run: |
+          echo "=== Verify mod uploaded to controller ==="
+          docker exec clusterio-controller npx clusterioctl \
+            --config /clusterio/tokens/config-control.json \
+            mod list 2>/dev/null | grep -q "squeak-through" \
+            && echo "PASS: Mod 'squeak-through' uploaded" \
+            || { echo "FAIL: Mod not found on controller"; exit 1; }
+
+          echo "=== Verify mod pre-cached on host ==="
+          docker exec clusterio-host-1 ls /clusterio/mods/ | grep -q "squeak-through" \
+            && echo "PASS: Mod pre-cached on host-1" \
+            || { echo "FAIL: Mod not pre-cached on host-1"; exit 1; }
+
+      - name: Verify instance seeding
+        run: |
+          INSTANCE_LIST=$(docker exec clusterio-controller npx clusterioctl \
+            --config /clusterio/tokens/config-control.json \
+            instance list 2>/dev/null)
+          echo "$INSTANCE_LIST"
+
+          echo "=== Verify TestInstance created and running ==="
+          echo "$INSTANCE_LIST" | grep -q "TestInstance" \
+            && echo "PASS: TestInstance exists" \
+            || { echo "FAIL: TestInstance not found"; exit 1; }
+
+          echo "=== Verify save uploaded ==="
+          docker exec clusterio-controller npx clusterioctl \
+            --config /clusterio/tokens/config-control.json \
+            instance save list TestInstance 2>/dev/null | grep -q "dummy" \
+            && echo "PASS: Save 'dummy.zip' uploaded" \
+            || { echo "FAIL: Save not found on TestInstance"; exit 1; }
+
+          echo "=== Verify StoppedInstance created but not running ==="
+          echo "$INSTANCE_LIST" | grep "StoppedInstance" | grep -qi "stopped\|unassigned" \
+            && echo "PASS: StoppedInstance is not running (auto_start=false)" \
+            || { echo "FAIL: StoppedInstance should not be running"; exit 1; }
+
+      - name: Verify idempotent restart
+        run: |
+          echo "=== Restart and verify no duplicate seeding ==="
+          docker compose restart
+          sleep 30
+          INSTANCE_COUNT=$(docker exec clusterio-controller npx clusterioctl \
+            --config /clusterio/tokens/config-control.json \
+            instance list 2>/dev/null | grep -cE "TestInstance|StoppedInstance" || true)
+          echo "Instance count after restart: $INSTANCE_COUNT"
+          [ "$INSTANCE_COUNT" -le 2 ] \
+            && echo "PASS: No duplicate instances after restart" \
+            || { echo "FAIL: Duplicate instances detected"; exit 1; }
 
       - name: Show logs on failure
         if: failure()

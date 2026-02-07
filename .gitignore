@@ -1,8 +1,13 @@
-# Runtime data
-data/
-clusterio/
-logs/
-plugins/
+# Seed data - ignore user-specific data, keep templates and test fixtures
+/seed-data/**
+!/seed-data/.gitkeep
+!/seed-data/**/
+!/seed-data/**/.gitkeep
+!/seed-data/**/*.example.json
+
+# Test fixtures (committed for CI)
+!/seed-data/hosts/clusterio-host-1/TestInstance/dummy.zip
+!/seed-data/mods/squeak-through-2_0.1.3.zip
 
 # Environment file (contains secrets)
 .env

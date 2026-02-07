@@ -2,8 +2,14 @@
 # host-entrypoint.sh
 set -e
 
+DATA_DIR="/clusterio/data"
+CONFIG_PATH="$DATA_DIR/config-host.json"
 TOKENS_DIR="/clusterio/tokens"
-# Use HOST_NAME env var, fallback to hostname, then default
+EXTERNAL_PLUGINS_DIR="/clusterio/external_plugins"
+SEED_MODS_DIR="/clusterio/seed-mods"
+HOST_MODS_DIR="/clusterio/mods"
+
+# Use HOST_NAME env var, fallback to hostname
 HOST_NAME="${HOST_NAME:-$(hostname)}"
 # Extract numeric ID from host name (e.g., clusterio-host-1 -> 1)
 HOST_ID=$(echo "$HOST_NAME" | grep -oE '[0-9]+$' || echo "1")
@@ -11,8 +17,33 @@ TOKEN_FILE="$TOKENS_DIR/${HOST_NAME}.token"
 MAX_WAIT_SECONDS=300
 WAIT_INTERVAL=5
 
-# Fix volume permissions for writable directories only
-chown -R clusterio:clusterio /clusterio/instances /clusterio/logs 2>/dev/null || true
+# Create data directory and fix permissions
+mkdir -p "$DATA_DIR"
+chown -R clusterio:clusterio "$DATA_DIR"
+
+# Handle external plugins if mounted
+source /scripts/install-plugins.sh
+install_external_plugins "$EXTERNAL_PLUGINS_DIR"
+
+# Pre-cache seed mods so the host doesn't need to download them from the controller.
+# Runs on every startup (not just first run) since the mods dir may be ephemeral.
+if [ -d "$SEED_MODS_DIR" ]; then
+  shopt -s nullglob
+  MOD_FILES=("$SEED_MODS_DIR"/*.zip)
+  shopt -u nullglob
+  if [ ${#MOD_FILES[@]} -gt 0 ]; then
+    mkdir -p "$HOST_MODS_DIR"
+    echo "Pre-caching ${#MOD_FILES[@]} mod(s) from seed data..."
+    for mod_file in "${MOD_FILES[@]}"; do
+      mod_name=$(basename "$mod_file")
+      if [ ! -f "$HOST_MODS_DIR/$mod_name" ]; then
+        cp "$mod_file" "$HOST_MODS_DIR/$mod_name"
+        echo "  Cached: $mod_name"
+      fi
+    done
+    chown -R clusterio:clusterio "$HOST_MODS_DIR"
+  fi
+fi
 
 get_token() {
     # Priority 1: Environment variable (for standalone container usage)
@@ -30,11 +61,13 @@ get_token() {
     return 1
 }
 
-# Check if token is already configured
-EXISTING_TOKEN=$(gosu clusterio npx clusteriohost --log-level error config get host.controller_token 2>/dev/null || echo "")
-if [ -n "$EXISTING_TOKEN" ] && [ "$EXISTING_TOKEN" != "null" ]; then
-    echo "Host token already configured, starting host..."
-    exec gosu clusterio npx clusteriohost run
+# Check if already configured (config file exists with token)
+if [ -f "$CONFIG_PATH" ]; then
+    EXISTING_TOKEN=$(gosu clusterio npx clusteriohost --log-level error config get host.controller_token --config "$CONFIG_PATH" 2>/dev/null || echo "")
+    if [ -n "$EXISTING_TOKEN" ] && [ "$EXISTING_TOKEN" != "null" ]; then
+        echo "Host already configured, starting..."
+        exec gosu clusterio npx clusteriohost run --config "$CONFIG_PATH"
+    fi
 fi
 
 # Wait for token to become available
@@ -51,10 +84,15 @@ while ! TOKEN=$(get_token); do
     WAITED=$((WAITED + WAIT_INTERVAL))
 done
 
-echo "Host token obtained, configuring host (ID: $HOST_ID)..."
-gosu clusterio npx clusteriohost --log-level error config set host.id "$HOST_ID"
-gosu clusterio npx clusteriohost --log-level error config set host.name "$HOST_NAME"
-gosu clusterio npx clusteriohost --log-level error config set host.controller_token "$TOKEN"
+echo "Configuring host (ID: $HOST_ID, Name: $HOST_NAME)..."
+
+# Configure host with paths relative to data volume
+gosu clusterio npx clusteriohost --log-level error config set host.id "$HOST_ID" --config "$CONFIG_PATH"
+gosu clusterio npx clusteriohost --log-level error config set host.name "$HOST_NAME" --config "$CONFIG_PATH"
+gosu clusterio npx clusteriohost --log-level error config set host.controller_url "${CONTROLLER_URL:-http://clusterio-controller:8080/}" --config "$CONFIG_PATH"
+gosu clusterio npx clusteriohost --log-level error config set host.controller_token "$TOKEN" --config "$CONFIG_PATH"
+gosu clusterio npx clusteriohost --log-level error config set host.factorio_directory /opt/factorio --config "$CONFIG_PATH"
+gosu clusterio npx clusteriohost --log-level error config set host.instances_directory "$DATA_DIR/instances" --config "$CONFIG_PATH"
 
 # Start the host
-exec gosu clusterio npx clusteriohost run
+exec gosu clusterio npx clusteriohost run --config "$CONFIG_PATH"

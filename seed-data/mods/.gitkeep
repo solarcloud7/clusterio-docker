@@ -1,0 +1,4 @@
+# Place Factorio mod .zip files here (e.g., my-mod_1.0.0.zip)
+# On first run, these are uploaded to the controller via API.
+# Hosts and instances pull mods automatically — no manual copying needed.
+# After upload, create a Mod Pack via Web UI or CLI to assign mods to instances.

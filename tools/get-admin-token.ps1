@@ -14,14 +14,27 @@ if (Test-Path $EnvFile) {
 }
 
 Write-Host ""
-Write-Host "Generating admin token for user: $AdminUser" -ForegroundColor Cyan
+Write-Host "Retrieving admin token for user: $AdminUser" -ForegroundColor Cyan
 
-# Generate token via docker exec
-$Token = docker exec clusterio-controller npx clusteriocontroller --log-level error bootstrap generate-user-token $AdminUser 2>&1
+# Read token from config-control.json
+$ConfigJson = docker exec clusterio-controller cat /clusterio/tokens/config-control.json 2>&1
 
 if ($LASTEXITCODE -ne 0) {
-    Write-Host "Failed to generate token. Is the controller running?" -ForegroundColor Red
-    Write-Host $Token -ForegroundColor Yellow
+    Write-Host "Failed to read token. Is the controller running?" -ForegroundColor Red
+    Write-Host $ConfigJson -ForegroundColor Yellow
+    exit 1
+}
+
+# Parse the token from the JSON
+try {
+    $Config = $ConfigJson | ConvertFrom-Json
+    $Token = $Config.'control.controller_token'
+    if ([string]::IsNullOrWhiteSpace($Token)) {
+        throw "Token not found in config"
+    }
+} catch {
+    Write-Host "Failed to parse token from config file" -ForegroundColor Red
+    Write-Host $_.Exception.Message -ForegroundColor Yellow
     exit 1
 }
 
