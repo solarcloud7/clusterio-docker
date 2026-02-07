@@ -52,9 +52,7 @@ RUN npm install \
 COPY --chown=clusterio:clusterio scripts/suppress-dev-warning.js /tmp/suppress-dev-warning.js
 RUN node /tmp/suppress-dev-warning.js && rm /tmp/suppress-dev-warning.js
 
-# Configure controller settings
-RUN npx clusteriocontroller config set controller.http_port ${CONTROLLER_HTTP_PORT} && \
-    npx clusteriocontroller config set controller.external_address ${CONTROLLER_PUBLIC_ADDRESS}
+# Note: Controller config is set at runtime in entrypoint to persist in volume
 
 # Expose the controller port
 EXPOSE ${CONTROLLER_HTTP_PORT}

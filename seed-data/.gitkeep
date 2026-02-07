@@ -1,0 +1,22 @@
+# Seed data directory
+# 
+# Structure:
+#   seed-data/
+#   ├── controller/
+#   │   └── config.json           # Optional controller config overrides
+#   └── hosts/
+#       ├── clusterio-host-1/     # Must match docker-compose hostname
+#       │   ├── MyInstance/
+#       │   │   └── world.zip     # Save file to load on creation
+#       │   └── AnotherInstance/
+#       │       └── save.zip
+#       └── clusterio-host-2/
+#           └── Instance3/
+#               └── backup.zip
+#
+# On first run:
+#   - Host folders must match docker-compose hostnames exactly
+#   - Each subdirectory becomes an instance assigned to that host
+#   - Any .zip files are uploaded as saves
+#
+# See docs/seed-data.md for full documentation

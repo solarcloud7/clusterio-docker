@@ -1,0 +1,3 @@
+# Place additional Factorio mod .zip files here
+# These archives are baked into the images under /opt/seed-mods
+# Any .zip archives placed here are uploaded automatically during bootstrap.

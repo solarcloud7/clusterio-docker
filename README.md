@@ -2,6 +2,24 @@
 
 Docker images for running [Clusterio](https://github.com/clusterio/clusterio) - a clustered Factorio server manager.
 
+## Table of Contents
+
+- [Images](#images)
+- [Quick Start](#quick-start)
+- [Standalone Usage](#standalone-usage)
+- [Volume Mounts](#volume-mounts)
+- [Environment Variables](#environment-variables)
+- [Getting Host Tokens](#getting-host-tokens)
+- [Viewing Logs](#viewing-logs)
+- [Prometheus Metrics](#prometheus-metrics)
+- [Included Plugins](#included-plugins)
+- [Architecture](#architecture)
+- [Troubleshooting](#troubleshooting)
+- [Building Locally](#building-locally)
+- [License](#license)
+
+---
+
 ## Images
 
 | Image | Description |
@@ -47,9 +65,10 @@ Docker images for running [Clusterio](https://github.com/clusterio/clusterio) - 
 docker run -d \
   --name clusterio-controller \
   -p 8080:8080 \
-  -v clusterio-controller-data:/clusterio \
+  -v controller-data:/clusterio/data \
+  -v shared-tokens:/clusterio/tokens \
   -e INIT_CLUSTERIO_ADMIN=your_username \
-  solarcloud7/clusterio-controller
+  ghcr.io/solarcloud7/clusterio-controller
 ```
 
 ### Host
@@ -58,67 +77,60 @@ docker run -d \
 docker run -d \
   --name clusterio-host \
   -p 34100-34199:34100-34199/udp \
-  -v clusterio-host-data:/clusterio \
+  -v host-data:/clusterio/data \
+  -v shared-tokens:/clusterio/tokens:ro \
   -e CLUSTERIO_HOST_TOKEN=your_host_token \
   -e CONTROLLER_URL=http://your-controller:8080/ \
-  solarcloud7/clusterio-host
+  ghcr.io/solarcloud7/clusterio-host
 ```
 
 ---
 
 ## Volume Mounts
 
-### Controller Volumes
+Each container uses a single data volume for all persistent storage:
 
-| Path | Purpose | Persist? |
-|------|---------|----------|
-| `/clusterio/database` | Users, hosts, instances, roles | Recommended |
-| `/clusterio/mods` | Shared mod storage | Recommended |
-| `/clusterio/logs` | Controller logs | Optional |
-| `/clusterio/tokens` | Generated host tokens | Recommended |
+| Container | Volume Mount | Contents |
+|-----------|--------------|----------|
+| Controller | `/clusterio/data` | Config, database, mods, logs |
+| Controller | `/clusterio/tokens` | Generated host tokens (shared) |
+| Host | `/clusterio/data` | Config, instances, mods, logs |
+| Host | `/clusterio/tokens` | Token from controller (read-only) |
 
-### Host Volumes
+### Data Volume Structure
 
-| Path | Purpose | Persist? |
-|------|---------|----------|
-| `/clusterio/instances` | Game saves, instance configs | Recommended |
-| `/clusterio/logs` | Host logs | Optional |
-| `/clusterio/tokens` | Shared token volume (read-only) | Recommended |
-
-> **Note**: No volumes are strictly required. Containers work without mounts, but all data is lost when the container is removed.
-
-### Simple Volume Mount
-
-Mount everything to a single volume:
-
-```bash
-# Controller
-docker run -d -p 8080:8080 \
-  -v clusterio-controller:/clusterio \
-  -e INIT_CLUSTERIO_ADMIN=admin \
-  solarcloud7/clusterio-controller
-
-# Host
-docker run -d -p 34100-34199:34100-34199/udp \
-  -v clusterio-host:/clusterio \
-  -e CLUSTERIO_HOST_TOKEN=your_token \
-  solarcloud7/clusterio-host
 ```
+# Controller /clusterio/data/
+├── config-controller.json    # Controller configuration
+├── database/                 # Users, hosts, instances, roles
+└── (mods/, logs/ created as needed)
+
+# Host /clusterio/data/
+├── config-host.json          # Host configuration
+├── instances/                # Game saves, instance configs
+└── (mods/, logs/ created as needed)
+```
+
+> **Note**: Volumes are recommended but not required. Without mounts, data is lost when the container is removed.
 
 ### Bind Mount (Direct Host Access)
 
+For direct access to files from your host machine:
+
 ```bash
 # Controller
 docker run -d -p 8080:8080 \
-  -v ./data/controller:/clusterio \
+  -v ./data/controller:/clusterio/data \
+  -v ./tokens:/clusterio/tokens \
   -e INIT_CLUSTERIO_ADMIN=admin \
-  solarcloud7/clusterio-controller
+  ghcr.io/solarcloud7/clusterio-controller
 
 # Host  
 docker run -d -p 34100-34199:34100-34199/udp \
-  -v ./data/host:/clusterio \
+  -v ./data/host:/clusterio/data \
+  -v ./tokens:/clusterio/tokens:ro \
   -e CLUSTERIO_HOST_TOKEN=your_token \
-  solarcloud7/clusterio-host
+  ghcr.io/solarcloud7/clusterio-host
 ```
 
 ---
@@ -172,9 +184,10 @@ For standalone containers or custom host names:
 3. Pass the token to host via `CLUSTERIO_HOST_TOKEN` environment variable:
    ```bash
    docker run -d \
+     -v host-data:/clusterio/data \
      -e CLUSTERIO_HOST_TOKEN=eyJhbGci... \
      -e CONTROLLER_URL=http://your-controller:8080/ \
-     solarcloud7/clusterio-host
+     ghcr.io/solarcloud7/clusterio-host
    ```
 
 ### Option 3: Web UI
@@ -182,6 +195,79 @@ For standalone containers or custom host names:
 1. Log into the controller web UI
 2. Navigate to Hosts → Create Host Token
 3. Use the generated token
+
+---
+
+## Viewing Logs
+
+### Dozzle
+https://github.com/amir20/dozzle
+
+### Docker Desktop 
+
+Docker Desktop provides an excellent built-in log viewer with a merged timeline from all containers:
+
+![Docker Desktop Logs](docs/images/docker-desktop-logs.png)
+
+
+### Command Line
+
+```bash
+# View logs from a specific container
+docker logs clusterio-controller
+
+# Follow logs in real-time
+docker logs -f clusterio-host-1
+
+# Show last 100 lines
+docker logs --tail 100 clusterio-host-2
+
+# Show logs with timestamps
+docker logs -t clusterio-controller
+```
+
+---
+
+## Prometheus Metrics
+
+The docker-compose setup includes a Prometheus container for collecting metrics from the `statistics_exporter` plugin.
+
+### Access
+
+- **Prometheus UI**: http://localhost:9090
+- **Controller metrics**: http://localhost:8080/metrics
+
+### Configuration
+
+Edit [scripts/prometheus.yml](scripts/prometheus.yml) to customize scrape targets:
+
+```yaml
+scrape_configs:
+  - job_name: 'clusterio-controller'
+    static_configs:
+      - targets: ['clusterio-controller:8080']
+    metrics_path: /metrics
+
+  - job_name: 'clusterio-hosts'
+    static_configs:
+      - targets:
+          - 'clusterio-host-1:8080'
+          - 'clusterio-host-2:8080'
+    metrics_path: /metrics
+```
+
+### Available Metrics
+
+The `statistics_exporter` plugin exposes metrics including:
+
+- `clusterio_controller_connected_hosts` - Number of connected hosts
+- `clusterio_instance_*` - Per-instance game statistics
+- `clusterio_player_*` - Player activity metrics
+
+After changes, restart Prometheus:
+```bash
+docker compose restart prometheus
+```
 
 ---
 
@@ -201,17 +287,24 @@ Both images include these official plugins:
 ## Architecture
 
 ```
+                    ┌─────────────────────────────┐
+                    │        Prometheus           │
+                    │  - Metrics collection       │
+                    │  - Query UI (port 9090)     │
+                    └──────────────┬──────────────┘
+                                   │ scrapes
+                                   ▼ /metrics
 ┌─────────────────────────────────────────────────────────┐
 │                    Controller                           │
 │  - Web UI (port 8080)                                   │
 │  - REST API                                             │
 │  - Cluster coordination                                 │
 │  - User/role management                                 │
-└─────────────────────┬───────────────────────────────────┘
-                      │
-        ┌─────────────┼─────────────┐
-        │             │             │
-        ▼             ▼             ▼
+└──────────────────────┬──────────────────────────────────┘
+                       │
+         ┌─────────────┼─────────────┐
+         │             │             │
+         ▼             ▼             ▼
 ┌───────────┐  ┌───────────┐  ┌───────────┐
 │  Host 1   │  │  Host 2   │  │  Host N   │
 │           │  │           │  │           │

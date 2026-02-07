@@ -1,8 +1,10 @@
 # Runtime data
-data/
-clusterio/
-logs/
-plugins/
+/seed-data/saves/*
+/seed-data/external_plugins/*
+/seed-data/mods/*
+
+# Exception: Do not ignore the .gitkeep file
+!.gitkeep
 
 # Environment file (contains secrets)
 .env

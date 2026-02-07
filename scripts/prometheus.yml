@@ -1,0 +1,15 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  # Clusterio Controller metrics (from statistics_exporter plugin)
+  - job_name: 'clusterio-controller'
+    static_configs:
+      - targets: ['clusterio-controller:8080']
+    metrics_path: /metrics
+
+  # Prometheus self-monitoring
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
