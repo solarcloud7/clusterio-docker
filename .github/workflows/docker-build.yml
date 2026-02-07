@@ -45,6 +45,9 @@ jobs:
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
             type=raw,value=latest,enable={{is_default_branch}}
+          labels: |
+            org.opencontainers.image.title=Clusterio Controller
+            org.opencontainers.image.description=Clusterio cluster controller with web UI and API
 
       - name: Extract metadata for Host
         id: meta-host
@@ -57,6 +60,9 @@ jobs:
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
             type=raw,value=latest,enable={{is_default_branch}}
+          labels: |
+            org.opencontainers.image.title=Clusterio Host
+            org.opencontainers.image.description=Clusterio host with Factorio headless server
 
       - name: Build and push Controller image
         uses: docker/build-push-action@v5
