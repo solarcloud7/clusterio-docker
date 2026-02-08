@@ -45,6 +45,12 @@ if [ ! -f "$CONFIG_PATH" ]; then
   if [ -n "$CONTROLLER_PUBLIC_ADDRESS" ]; then
     gosu clusterio npx clusteriocontroller --log-level error config set controller.public_address "$CONTROLLER_PUBLIC_ADDRESS" --config "$CONFIG_PATH"
   fi
+  if [ -n "$FACTORIO_USERNAME" ]; then
+    gosu clusterio npx clusteriocontroller --log-level error config set controller.factorio_username "$FACTORIO_USERNAME" --config "$CONFIG_PATH"
+  fi
+  if [ -n "$FACTORIO_TOKEN" ]; then
+    gosu clusterio npx clusteriocontroller --log-level error config set controller.factorio_token "$FACTORIO_TOKEN" --config "$CONFIG_PATH"
+  fi
 
   # --- Bootstrap (must run BEFORE controller starts) ---
   # These commands modify database files on disk. The controller loads them

@@ -156,6 +156,8 @@ docker run -d -p 34100-34199:34100-34199/udp \
 | `CONTROLLER_HTTP_PORT` | `8080` | Web UI / API port |
 | `CONTROLLER_PUBLIC_ADDRESS` | *(unset)* | Public URL for external access (standalone usage) |
 | `HOST_COUNT` | `0` (standalone) / `2` (compose) | Number of host tokens to generate |
+| `FACTORIO_USERNAME` | *(unset)* | Factorio account username (for mod portal & multiplayer) |
+| `FACTORIO_TOKEN` | *(unset)* | Factorio account token from [factorio.com/profile](https://factorio.com/profile) |
 
 ### Host
 
