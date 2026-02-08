@@ -24,10 +24,17 @@ Docker images for running [Clusterio](https://github.com/clusterio/clusterio) - 
 
 ## Images
 
+Pre-built images are published to the GitHub Container Registry:
+
 | Image | Description |
 |-------|-------------|
-| `clusterio-controller` | Web UI, API, and cluster coordination |
-| `clusterio-host` | Factorio server host (runs game instances) |
+| `ghcr.io/solarcloud7/clusterio-controller` | Web UI, API, and cluster coordination |
+| `ghcr.io/solarcloud7/clusterio-host` | Factorio server host (runs game instances) |
+
+```bash
+docker pull ghcr.io/solarcloud7/clusterio-controller:latest
+docker pull ghcr.io/solarcloud7/clusterio-host:latest
+```
 
 ## Quick Start
 
