@@ -230,7 +230,8 @@ On first run (clean volumes), the controller automatically:
 1. Seeds database files (users, roles)
 2. Uploads mods to the controller
 3. Creates instances, assigns them to hosts, uploads saves
-4. Starts instances automatically (override with `config.json`)
+4. Applies instance configuration from `instance.json` (server settings, plugins, etc.)
+5. Starts instances automatically (override with `instance.auto_start: false` in `instance.json`)
 
 Hosts pre-cache mods locally from the seed-data mount on every startup for faster instance starts.
 
