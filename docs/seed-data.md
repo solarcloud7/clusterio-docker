@@ -16,11 +16,13 @@ seed-data/
 └── hosts/
     ├── clusterio-host-1/              # Must match hostname in docker-compose
     │   ├── Instance1/
+    │   │   ├── instance.json           # Native Clusterio instance config (optional)
     │   │   └── world.zip              # Save file to upload
     │   └── Instance2/
     │       └── save.zip
     └── clusterio-host-2/
         └── Instance3/
+            ├── instance.json
             └── backup.zip
 ```
 
@@ -121,8 +123,9 @@ On **first run only** (when no `config-controller.json` exists):
 1. Controller scans `seed-data/hosts/` for directories
 2. Each host folder **must match** a hostname from docker-compose (e.g., `clusterio-host-1`)
 3. Instance folders under each host are created and automatically assigned to that host
-4. Any `.zip` files are uploaded as saves to that instance
-5. Instances are **started automatically** by default (override with `config.json`)
+4. If an `instance.json` is present, its configuration is applied (server settings, plugins, etc.)
+5. Any `.zip` files are uploaded as saves to that instance
+6. Instances are **started automatically** by default (override with `instance.auto_start: false` in `instance.json`)
 
 ## Host Folder Naming
 
@@ -145,6 +148,7 @@ seed-data/
 └── hosts/
     └── clusterio-host-1/
         ├── Production/
+        │   ├── instance.json
         │   └── world.zip
         └── Testing/
             └── test-save.zip
@@ -157,29 +161,65 @@ seed-data/
 └── hosts/
     ├── clusterio-host-1/
     │   ├── Server-EU/
+    │   │   ├── instance.json
     │   │   └── eu-save.zip
     │   └── Server-US/
+    │       ├── instance.json
     │       └── us-save.zip
     └── clusterio-host-2/
         └── Server-Asia/
+            ├── instance.json
             └── asia-save.zip
 ```
 
-## Instance Config Options
+## Instance Configuration
 
-Create a `config.json` in your instance folder to override default behavior:
+Place a native Clusterio `instance.json` in your instance folder to configure server settings, plugins, and behavior. This is the same format Clusterio uses internally.
+
+You can export an existing instance's config from the Web UI or copy one from a running container:
+
+```bash
+# Export from a running instance
+docker exec clusterio-host-1 cat /clusterio/data/instances/MyInstance/instance.json > seed-data/hosts/clusterio-host-1/MyInstance/instance.json
+```
+
+### Example instance.json
 
 ```json
 {
-  "auto_start": false
+  "instance.auto_start": true,
+  "factorio.version": "2.0.73",
+  "factorio.game_port": 34198,
+  "factorio.settings": {
+    "name": "My Server",
+    "description": "A Factorio server",
+    "visibility": { "public": true, "lan": true },
+    "max_players": 100,
+    "auto_pause": true
+  },
+  "global_chat.load_plugin": true,
+  "research_sync.load_plugin": false
 }
 ```
 
-| Option | Type | Default | Description |
-|--------|------|---------|-------------|
-| `auto_start` | boolean | `true` | Start instance automatically after seeding |
+### Skipped Fields
 
-> **Note:** `assigned_host` is no longer needed - the host is determined by the folder structure.
+The following fields are **automatically skipped** during seeding because they are runtime or environment-specific:
+
+| Field | Reason |
+|-------|--------|
+| `instance.id` | Auto-assigned by controller on create |
+| `instance.name` | Taken from folder name |
+| `instance.assigned_host` | Determined by folder structure |
+| `factorio.host_assigned_game_port` | Runtime only |
+| `factorio.rcon_port` | Auto-generated |
+| `factorio.rcon_password` | Auto-generated |
+| `factorio.mod_pack_id` | Numeric ID varies across clusters |
+| `_warning` | Clusterio metadata |
+
+All other fields (server settings, plugin toggles, factorio version, etc.) are applied via the Clusterio API.
+
+> **Tip:** `instance.auto_start` is read to decide whether to start the instance after seeding, but is **not** set via the API — Clusterio's built-in auto-start handles restarts after the initial seed.
 
 ## Usage
 
@@ -228,7 +268,7 @@ Create a `config.json` in your instance folder to override default behavior:
 
 ### Instance on wrong host
 
-- The host is determined by folder structure, not config.json
+- The host is determined by folder structure, not instance.json
 - Move instance folder to correct host folder
 
 ### Save not uploaded

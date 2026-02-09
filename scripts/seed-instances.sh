@@ -1,21 +1,36 @@
 #!/bin/bash
 # seed-instances.sh
-# Creates, assigns, uploads saves, and optionally starts seeded instances.
+# Creates, assigns, configures, uploads saves, and optionally starts seeded instances.
 #
 # Expected environment / arguments:
 #   $1 = CONTROL_CONFIG  (path to config-control.json)
 #   $2 = HOST_COUNT      (number of expected hosts)
 #
 # Reads from: /clusterio/seed-data/hosts/<hostname>/<instance>/
-#   - *.zip   → uploaded as saves
-#   - config.json (optional) → per-instance settings
-#       { "auto_start": true }   ← start instance after seeding (default: true)
+#   - *.zip          → uploaded as saves
+#   - instance.json  (optional) → native Clusterio instance config
+#
+# instance.json is the standard Clusterio InstanceConfig format. Fields that
+# are environment-specific (IDs, tokens, assigned host) are automatically
+# skipped. All other fields are applied via `clusterioctl instance config set`.
 
 set -e
 
 CONTROL_CONFIG="$1"
 HOST_COUNT="${2:-0}"
 SEED_DATA_DIR="/clusterio/seed-data"
+
+# Fields that must NOT be seeded — they are runtime/environment-specific
+SKIP_FIELDS=(
+  "instance.id"
+  "instance.name"
+  "instance.assigned_host"
+  "instance.auto_start"
+  "factorio.host_assigned_game_port"
+  "factorio.rcon_port"
+  "factorio.rcon_password"
+  "factorio.mod_pack_id"
+)
 
 if [ ! -d "$SEED_DATA_DIR/hosts" ]; then
   echo "No seed-data/hosts directory found, skipping instance seeding."
@@ -52,6 +67,79 @@ wait_for_hosts() {
 }
 
 # ---------------------------------------------------------------------------
+# Check if a field should be skipped
+# ---------------------------------------------------------------------------
+should_skip_field() {
+  local field="$1"
+  for skip in "${SKIP_FIELDS[@]}"; do
+    if [ "$field" = "$skip" ]; then
+      return 0
+    fi
+  done
+  # Skip internal Clusterio metadata
+  if [ "$field" = "_warning" ]; then
+    return 0
+  fi
+  return 1
+}
+
+# ---------------------------------------------------------------------------
+# Apply instance.json configuration
+# ---------------------------------------------------------------------------
+apply_instance_config() {
+  local instance_name="$1"
+  local config_file="$2"
+  local applied=0
+
+  echo "      Applying instance.json configuration..."
+
+  # Extract all top-level keys and their values from instance.json
+  # Uses a simple line-by-line approach for flat keys and JSON for objects
+  while IFS= read -r line; do
+    # Match "key": value lines (top-level only, not nested inside objects)
+    local field value
+    field=$(echo "$line" | sed -n 's/^[[:space:]]*"\([^"]*\)"[[:space:]]*:.*/\1/p')
+
+    if [ -z "$field" ]; then
+      continue
+    fi
+
+    if should_skip_field "$field"; then
+      continue
+    fi
+
+    # Extract the value — handle objects (factorio.settings) specially
+    # Use python/node to properly extract JSON values
+    value=$(gosu clusterio node -e "
+      const fs = require('fs');
+      const cfg = JSON.parse(fs.readFileSync('$config_file', 'utf8'));
+      const val = cfg['$field'];
+      if (val === null || val === undefined) {
+        process.stdout.write('');
+      } else if (typeof val === 'object') {
+        process.stdout.write(JSON.stringify(val));
+      } else {
+        process.stdout.write(String(val));
+      }
+    " 2>/dev/null) || continue
+
+    if [ -z "$value" ]; then
+      continue
+    fi
+
+    gosu clusterio npx clusterioctl --log-level error instance config set \
+      "$instance_name" "$field" "$value" \
+      --config "$CONTROL_CONFIG" 2>/dev/null || {
+        echo "        Warning: Failed to set $field"
+        continue
+      }
+    applied=$((applied + 1))
+  done < "$config_file"
+
+  echo "      Applied $applied config field(s)"
+}
+
+# ---------------------------------------------------------------------------
 # Seed a single instance
 # ---------------------------------------------------------------------------
 seed_instance() {
@@ -71,6 +159,11 @@ seed_instance() {
   gosu clusterio npx clusterioctl --log-level error instance assign "$instance_name" "$host_id" \
     --config "$CONTROL_CONFIG" 2>/dev/null || true
 
+  # Apply instance.json configuration (if present)
+  if [ -f "${instance_dir}instance.json" ]; then
+    apply_instance_config "$instance_name" "${instance_dir}instance.json"
+  fi
+
   # Upload save files (.zip)
   for save_file in "${instance_dir}"*.zip; do
     if [ -f "$save_file" ]; then
@@ -82,13 +175,17 @@ seed_instance() {
     fi
   done
 
-  # Read per-instance config (default: auto_start=true)
+  # Determine auto_start from instance.json (default: true)
   local auto_start=true
-  if [ -f "${instance_dir}config.json" ]; then
-    # Parse auto_start from config.json (defaults to true if missing)
+  if [ -f "${instance_dir}instance.json" ]; then
     local parsed
-    parsed=$(grep -oP '"auto_start"\s*:\s*\K(true|false)' "${instance_dir}config.json" 2>/dev/null || echo "true")
-    auto_start="$parsed"
+    parsed=$(gosu clusterio node -e "
+      const cfg = JSON.parse(require('fs').readFileSync('${instance_dir}instance.json', 'utf8'));
+      process.stdout.write(String(cfg['instance.auto_start'] ?? true));
+    " 2>/dev/null) || true
+    if [ "$parsed" = "false" ]; then
+      auto_start=false
+    fi
   fi
 
   if [ "$auto_start" = "true" ]; then
@@ -96,7 +193,7 @@ seed_instance() {
     gosu clusterio npx clusterioctl --log-level error instance start "$instance_name" \
       --config "$CONTROL_CONFIG" 2>/dev/null || true
   else
-    echo "      Skipping auto-start (auto_start=false in config.json)"
+    echo "      Skipping auto-start (instance.auto_start=false)"
   fi
 }
 

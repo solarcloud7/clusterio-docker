@@ -112,7 +112,7 @@ jobs:
 
           # Add a second instance on host-2 with auto_start disabled
           mkdir -p seed-data/hosts/clusterio-host-2/StoppedInstance
-          echo '{"auto_start": false}' > seed-data/hosts/clusterio-host-2/StoppedInstance/config.json
+          echo '{"instance.auto_start": false}' > seed-data/hosts/clusterio-host-2/StoppedInstance/instance.json
 
       - name: Build images
         run: docker compose build
