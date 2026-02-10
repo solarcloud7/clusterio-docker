@@ -65,8 +65,21 @@ get_token() {
 if [ -f "$CONFIG_PATH" ]; then
     EXISTING_TOKEN=$(gosu clusterio npx clusteriohost --log-level error config get host.controller_token --config "$CONFIG_PATH" 2>/dev/null || echo "")
     if [ -n "$EXISTING_TOKEN" ] && [ "$EXISTING_TOKEN" != "null" ]; then
-        echo "Host already configured, starting..."
-        exec gosu clusterio npx clusteriohost run --config "$CONFIG_PATH"
+        # Token desync detection: if the shared token volume has a different token
+        # (e.g. controller volume was wiped and regenerated), reconfigure the host
+        if [ -f "$TOKEN_FILE" ]; then
+            NEW_TOKEN=$(cat "$TOKEN_FILE")
+            if [ "$EXISTING_TOKEN" != "$NEW_TOKEN" ]; then
+                echo "Token mismatch detected (controller may have been re-initialized) — reconfiguring host..."
+                rm -f "$CONFIG_PATH"
+            fi
+        fi
+
+        # If config still exists (no desync), start normally
+        if [ -f "$CONFIG_PATH" ]; then
+            echo "Host already configured, starting..."
+            exec gosu clusterio npx clusteriohost run --config "$CONFIG_PATH"
+        fi
     fi
 fi
 

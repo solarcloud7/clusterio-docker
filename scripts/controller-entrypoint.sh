@@ -103,7 +103,9 @@ done
 echo "Controller is ready"
 
 # On first run, seed data via API (requires running controller)
-if [ "$FIRST_RUN" = true ]; then
+# Also re-attempt if a previous first run was interrupted (marker not written)
+SEED_MARKER="$DATA_DIR/.seed-complete"
+if [ "$FIRST_RUN" = true ] || [ ! -f "$SEED_MARKER" ]; then
   CONTROL_CONFIG="$TOKENS_DIR/config-control.json"
 
   # Set default mod pack (required for instances to start)
@@ -126,6 +128,11 @@ if [ "$FIRST_RUN" = true ]; then
 
   # Seed instances from seed-data/hosts/
   /scripts/seed-instances.sh "$CONTROL_CONFIG" "$HOST_COUNT"
+
+  # Mark seeding as complete so restarts don't re-seed
+  touch "$SEED_MARKER"
+  chown clusterio:clusterio "$SEED_MARKER"
+  echo "Seeding complete."
 fi
 
 # Keep controller running

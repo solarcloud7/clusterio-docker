@@ -148,6 +148,16 @@ seed_instance() {
   local instance_name
   instance_name=$(basename "$instance_dir")
 
+  # Idempotency check: skip if instance with this name already exists
+  local existing
+  existing=$(gosu clusterio npx clusterioctl --log-level error instance list \
+    --config "$CONTROL_CONFIG" 2>/dev/null | grep -F " $instance_name " || true)
+
+  if [ -n "$existing" ]; then
+    echo "    Instance '$instance_name' already exists — skipping"
+    return 0
+  fi
+
   echo "    Creating instance: $instance_name"
 
   # Create the instance
