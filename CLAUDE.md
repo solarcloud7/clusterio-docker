@@ -286,3 +286,13 @@ Set `"instance.auto_start": false` to prevent auto-starting after seeding.
 **Symptom**: Hosts can't connect to controller
 **Cause**: Consumer changed the controller's hostname in their compose file
 **Fix**: Keep hostname as `clusterio-controller` (container name can be different). Alternatively, set `CONTROLLER_URL` on each host to match the new hostname.
+
+### 6. Game Port Range Auto-Derived from HOST_ID
+**Symptom**: Multiple hosts assign the same game port to instances, making some unreachable
+**Cause**: All hosts used the same default port range
+**Fix**: `host-entrypoint.sh` now auto-derives port range from HOST_ID: host N → `34N00-34N99`. Override with `FACTORIO_PORT_RANGE` env var if needed. Docker-compose port mappings must match (e.g., host 2 maps `34200-34209:34200-34209/udp`).
+
+### 7. DEFAULT_MOD_PACK Defaults to Base Game
+**Symptom**: Instances start without DLC mods (Space Age, etc.)
+**Cause**: `DEFAULT_MOD_PACK` env var defaults to `"Base Game 2.0"`
+**Fix**: Set `DEFAULT_MOD_PACK=Space Age 2.0` in controller env for Space Age support. Requires volume wipe + redeploy (mod pack is set on first run only).

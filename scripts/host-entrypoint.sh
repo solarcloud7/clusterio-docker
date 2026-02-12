@@ -99,6 +99,13 @@ done
 
 echo "Configuring host (ID: $HOST_ID, Name: $HOST_NAME)..."
 
+# Derive game port range from HOST_ID so each host uses non-overlapping ports.
+# Pattern: host N → 34N00 – 34N99 (e.g., host 1 → 34100-34199, host 2 → 34200-34299)
+# Override with FACTORIO_PORT_RANGE env var if needed.
+DEFAULT_PORT_START=$((34000 + HOST_ID * 100))
+DEFAULT_PORT_END=$((DEFAULT_PORT_START + 99))
+FACTORIO_PORT_RANGE="${FACTORIO_PORT_RANGE:-${DEFAULT_PORT_START}-${DEFAULT_PORT_END}}"
+
 # Configure host with paths relative to data volume
 gosu clusterio npx clusteriohost --log-level error config set host.id "$HOST_ID" --config "$CONFIG_PATH"
 gosu clusterio npx clusteriohost --log-level error config set host.name "$HOST_NAME" --config "$CONFIG_PATH"
@@ -106,6 +113,7 @@ gosu clusterio npx clusteriohost --log-level error config set host.controller_ur
 gosu clusterio npx clusteriohost --log-level error config set host.controller_token "$TOKEN" --config "$CONFIG_PATH"
 gosu clusterio npx clusteriohost --log-level error config set host.factorio_directory /opt/factorio --config "$CONFIG_PATH"
 gosu clusterio npx clusteriohost --log-level error config set host.instances_directory "$DATA_DIR/instances" --config "$CONFIG_PATH"
+gosu clusterio npx clusteriohost --log-level error config set host.factorio_port_range "$FACTORIO_PORT_RANGE" --config "$CONFIG_PATH"
 
 # Start the host
 exec gosu clusterio npx clusteriohost run --config "$CONFIG_PATH"
