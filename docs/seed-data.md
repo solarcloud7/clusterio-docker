@@ -100,11 +100,11 @@ seed-data/
 
 **How it works:**
 
-1. On first run, all `.zip` files in `seed-data/mods/` are uploaded to the **controller** via the API
+1. On every startup, all `.zip` files in `seed-data/mods/` are uploaded to the **controller** via the API (already-uploaded mods are skipped)
 2. **Hosts** pre-cache mods locally from the same seed-data mount on every startup — no network download needed
 3. **Instances** automatically get symlinks to the host's cached mods when they start
 
-> **Important:** You only need to place mods in `seed-data/mods/`. Do **not** manually copy mods to hosts or instances — Clusterio handles distribution automatically. The host-side caching is an optimization that avoids redundant controller→host downloads, which is especially useful during plugin development where volumes are frequently wiped.
+> **Important:** You only need to place mods in `seed-data/mods/`. Do **not** manually copy mods to hosts or instances — Clusterio handles distribution automatically. Both the controller upload and host-side caching run on every startup, so new mods added to `seed-data/mods/` are picked up without requiring a full volume wipe (`docker compose down -v`).
 
 After mods are uploaded, create a **Mod Pack** via the Web UI or CLI to assign mods to instances:
 

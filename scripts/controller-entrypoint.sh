@@ -105,9 +105,9 @@ echo "Controller is ready"
 # On first run, seed data via API (requires running controller)
 # Also re-attempt if a previous first run was interrupted (marker not written)
 SEED_MARKER="$DATA_DIR/.seed-complete"
-if [ "$FIRST_RUN" = true ] || [ ! -f "$SEED_MARKER" ]; then
-  CONTROL_CONFIG="$TOKENS_DIR/config-control.json"
+CONTROL_CONFIG="$TOKENS_DIR/config-control.json"
 
+if [ "$FIRST_RUN" = true ] || [ ! -f "$SEED_MARKER" ]; then
   # Set default mod pack (required for instances to start)
   DEFAULT_MOD_PACK="${DEFAULT_MOD_PACK:-Base Game 2.0}"
   echo "Setting default mod pack: $DEFAULT_MOD_PACK"
@@ -123,9 +123,6 @@ if [ "$FIRST_RUN" = true ] || [ ! -f "$SEED_MARKER" ]; then
     echo "  WARNING: Mod pack '$DEFAULT_MOD_PACK' not found — set manually in Web UI"
   fi
 
-  # Seed mods from seed-data/mods/
-  /scripts/seed-mods.sh "$CONTROL_CONFIG"
-
   # Seed instances from seed-data/hosts/
   /scripts/seed-instances.sh "$CONTROL_CONFIG" "$HOST_COUNT"
 
@@ -134,6 +131,10 @@ if [ "$FIRST_RUN" = true ] || [ ! -f "$SEED_MARKER" ]; then
   chown clusterio:clusterio "$SEED_MARKER"
   echo "Seeding complete."
 fi
+
+# Seed mods on every startup (like host pre-caching).
+# Existing mods are skipped; new mods are uploaded.
+/scripts/seed-mods.sh "$CONTROL_CONFIG"
 
 # Keep controller running
 wait $CONTROLLER_PID

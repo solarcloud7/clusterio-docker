@@ -15,6 +15,7 @@ ARG CONTROLLER_HTTP_PORT=8080
 # Environment variables (can be overridden at runtime)
 ENV CONTROLLER_HTTP_PORT=${CONTROLLER_HTTP_PORT} \
     NODE_ENV=production \
+    NODE_OPTIONS=--no-deprecation \
     NPM_CONFIG_UPDATE_NOTIFIER=false \
     CLUSTERIO_SUPPRESS_DEV_WARNING=1
 

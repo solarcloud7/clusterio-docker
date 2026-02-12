@@ -3,7 +3,9 @@
 # Uploads Factorio mod .zip files from seed-data/mods/ to the controller.
 #
 # Clusterio mod flow:  Controller → Host (cached on demand) → Instance (symlinked)
-# Only the controller needs mods seeded; hosts and instances pull automatically.
+# Runs on every controller startup (not just first run) so that new mods added
+# to seed-data/mods/ are picked up without requiring a full volume wipe.
+# Already-uploaded mods are skipped.
 #
 # Expected arguments:
 #   $1 = CONTROL_CONFIG  (path to config-control.json)

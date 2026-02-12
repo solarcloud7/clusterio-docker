@@ -25,7 +25,6 @@ SKIP_FIELDS=(
   "instance.id"
   "instance.name"
   "instance.assigned_host"
-  "instance.auto_start"
   "factorio.host_assigned_game_port"
   "factorio.rcon_port"
   "factorio.rcon_password"
