@@ -12,9 +12,19 @@
             }
         },
         {
-            "label": "Clean Restart",
+            "label": "Docker -v Down/Built/Up",
             "type": "shell",
             "command": "docker compose down -v && docker compose build && docker compose up -d",
+            "problemMatcher": [],
+            "presentation": {
+                "reveal": "always",
+                "panel": "shared"
+            }
+        },
+        {
+            "label": "Docker -v Down/Up",
+            "type": "shell",
+            "command": "docker compose down -v && docker compose up -d",
             "problemMatcher": [],
             "presentation": {
                 "reveal": "always",
