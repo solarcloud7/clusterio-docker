@@ -129,6 +129,6 @@ COPY --chmod=755 scripts/install-plugins.sh /scripts/install-plugins.sh
 COPY --chmod=755 scripts/host-entrypoint.sh /host-entrypoint.sh
 
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
-  CMD pgrep -f clusteriohost > /dev/null || exit 1
+  CMD grep -qa clusteriohost /proc/1/cmdline || exit 1
 
 ENTRYPOINT ["/host-entrypoint.sh"]
