@@ -77,7 +77,7 @@ clusterio-docker/
 2. Install external plugins (npm install if mounted)
 3. Pre-cache seed mods (copy from seed-mods mount → host mods dir)
 4. Runtime client download (if FACTORIO_USERNAME + FACTORIO_TOKEN set, no client yet, SKIP_CLIENT!=true)
-   └── Download once → stored in data volume ($DATA_DIR/factorio-client), persists across restarts
+   └── Download once → stored in external volume (/opt/factorio-client), persists across restarts
 5. Select Factorio directory: volume client → image client → headless
 6. Already configured? (config-host.json exists with valid token)
    ├── YES:
@@ -177,7 +177,7 @@ When the controller volume is wiped but host volumes persist, the controller gen
 | `/clusterio/tokens` | Shared token exchange | Controller: rw, Hosts: ro |
 | `/clusterio/seed-data` | Seed data for first run | Controller only, read-only |
 | `/clusterio/seed-mods` | Mod pre-cache for hosts | Hosts only, read-only |
-| `/clusterio/factorio-client` | Runtime-downloaded game client | `external: true` — survives `down -v` |
+| `/opt/factorio-client` | Runtime-downloaded game client | `external: true` — survives `down -v` |
 | `/clusterio/external_plugins` | External plugin directories | **Must be read-write** (npm install runs) |
 
 **Critical**: External plugins mount must NOT be `:ro` — the entrypoint runs `npm install` inside each plugin directory.

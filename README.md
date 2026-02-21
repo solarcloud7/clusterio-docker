@@ -113,7 +113,7 @@ Each container uses a single data volume for all persistent storage:
 | Host | `/clusterio/data` | Config, instances, mods, logs |
 | Host | `/clusterio/tokens` | Token from controller (read-only) |
 | Host | `/clusterio/seed-mods` | Mod cache from seed data (read-only bind mount) |
-| Host | `/clusterio/factorio-client` | Runtime-downloaded game client (`external: true`, survives `down -v`) |
+| Host | `/opt/factorio-client` | Runtime-downloaded game client (`external: true`, survives `down -v`) |
 
 ### Data Volume Structure
 

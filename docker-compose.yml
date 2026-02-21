@@ -102,7 +102,7 @@ services:
       - "34100-34109:34100-34109/udp"
     volumes:
       - host-1-data:/clusterio/data
-      - factorio-client:/clusterio/factorio-client
+      - factorio-client:/opt/factorio-client
       - shared-tokens:/clusterio/tokens:ro
       - ./seed-data/mods:/clusterio/seed-mods:ro
 
