@@ -27,10 +27,10 @@ ARG CURL_RETRIES=8
 #     --secret id=factorio_username,env=FACTORIO_USERNAME \
 #     --secret id=factorio_token,env=FACTORIO_TOKEN ...
 ARG INSTALL_FACTORIO_CLIENT=false
-ARG FACTORIO_CLIENT_BUILD=alpha
+ARG FACTORIO_CLIENT_BUILD=expansion
 # FACTORIO_CLIENT_BUILD options:
-#   "alpha"     — base game without Space Age DLC (default)
-#   "expansion" — full game including Space Age DLC
+#   "alpha"     — base game without Space Age DLC
+#   "expansion" — full game including Space Age DLC (default)
 ARG FACTORIO_CLIENT_TAG=stable
 ARG FACTORIO_CLIENT_USERNAME=""
 ARG FACTORIO_CLIENT_TOKEN=""

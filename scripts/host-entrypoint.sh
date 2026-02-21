@@ -45,15 +45,40 @@ if [ -d "$SEED_MODS_DIR" ]; then
   fi
 fi
 
-# Determine which Factorio installation to use.
-# If the full game client was installed at build time (INSTALL_FACTORIO_CLIENT=true),
-# use it instead of the headless server. The client is a superset of headless for
-# server mode and additionally provides icon/graphics data for Clusterio's export-data flow.
-# Set SKIP_CLIENT=true to force headless even when the client is present.
+# Runtime Factorio client download.
+# If FACTORIO_USERNAME + FACTORIO_TOKEN are set and the client is not already installed,
+# download it now. The client is stored in a persistent volume so it survives `down -v`.
 FACTORIO_CLIENT_HOME="${FACTORIO_CLIENT_HOME:-/opt/factorio-client}"
-if [ -d "$FACTORIO_CLIENT_HOME" ] && [ "${SKIP_CLIENT:-false}" != "true" ]; then
+FACTORIO_CLIENT_VOLUME_DIR="${FACTORIO_CLIENT_VOLUME_DIR:-/clusterio/factorio-client}"
+
+# Check for actual binary presence (directory may exist as an empty mount point)
+client_in_image() { [ -x "$FACTORIO_CLIENT_HOME/bin/x64/factorio" ]; }
+client_in_volume() { [ -x "$FACTORIO_CLIENT_VOLUME_DIR/bin/x64/factorio" ]; }
+
+if ! client_in_image && ! client_in_volume \
+   && [ -n "$FACTORIO_USERNAME" ] && [ -n "$FACTORIO_TOKEN" ] \
+   && [ "${SKIP_CLIENT:-false}" != "true" ]; then
+  FACTORIO_CLIENT_BUILD="${FACTORIO_CLIENT_BUILD:-expansion}"
+  FACTORIO_CLIENT_TAG="${FACTORIO_CLIENT_TAG:-stable}"
+  echo "Downloading Factorio game client (build=${FACTORIO_CLIENT_BUILD}, tag=${FACTORIO_CLIENT_TAG})..."
+  archive="/tmp/factorio-client.tar.xz"
+  curl -fL --retry 8 \
+    "https://factorio.com/get-download/${FACTORIO_CLIENT_TAG}/${FACTORIO_CLIENT_BUILD}/linux64?username=${FACTORIO_USERNAME}&token=${FACTORIO_TOKEN}" \
+    -o "$archive"
+  mkdir -p "$FACTORIO_CLIENT_VOLUME_DIR"
+  tar -xJf "$archive" -C "$FACTORIO_CLIENT_VOLUME_DIR" --strip-components=1
+  rm "$archive"
+  chown -R clusterio:clusterio "$FACTORIO_CLIENT_VOLUME_DIR"
+  echo "Factorio game client installed to $FACTORIO_CLIENT_VOLUME_DIR"
+fi
+
+# Use volume-installed client if present (preferred), then image-baked client, then headless.
+if client_in_volume && [ "${SKIP_CLIENT:-false}" != "true" ]; then
+    FACTORIO_DIR="$FACTORIO_CLIENT_VOLUME_DIR"
+    echo "Factorio game client (volume) detected — using $FACTORIO_DIR"
+elif client_in_image && [ "${SKIP_CLIENT:-false}" != "true" ]; then
     FACTORIO_DIR="$FACTORIO_CLIENT_HOME"
-    echo "Factorio game client detected — using $FACTORIO_DIR (enables graphical asset export)"
+    echo "Factorio game client (image) detected — using $FACTORIO_DIR"
 else
     FACTORIO_DIR="$FACTORIO_HOME"
 fi

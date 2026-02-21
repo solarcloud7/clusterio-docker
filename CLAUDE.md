@@ -76,15 +76,18 @@ clusterio-docker/
 1. Create data dirs, fix permissions
 2. Install external plugins (npm install if mounted)
 3. Pre-cache seed mods (copy from seed-mods mount → host mods dir)
-4. Already configured? (config-host.json exists with valid token)
+4. Runtime client download (if FACTORIO_USERNAME + FACTORIO_TOKEN set, no client yet, SKIP_CLIENT!=true)
+   └── Download once → stored in data volume ($DATA_DIR/factorio-client), persists across restarts
+5. Select Factorio directory: volume client → image client → headless
+6. Already configured? (config-host.json exists with valid token)
    ├── YES:
    │   a. Token desync check: compare stored token vs shared volume token
    │   ├── MATCH → Start host immediately (exec)
    │   └── MISMATCH → Delete config, fall through to reconfigure
-   └── NO: Continue to step 5
-5. Wait for token (from env var or shared volume, up to 300s)
-6. Configure host (ID, name, controller URL, token, paths)
-7. Start host (exec)
+   └── NO: Continue to step 7
+7. Wait for token (from env var or shared volume, up to 300s)
+8. Configure host (ID, name, controller URL, token, paths)
+9. Start host (exec)
 ```
 
 ### Seeding Flow (`seed-instances.sh`)
@@ -147,7 +150,11 @@ When the controller volume is wiped but host volumes persist, the controller gen
 | `HOST_NAME` | No | Container hostname | Must match `clusterio-host-N` pattern |
 | `CONTROLLER_URL` | No | `http://clusterio-controller:8080/` | Controller address |
 | `CLUSTERIO_HOST_TOKEN` | No | Auto from shared volume | Manual token override |
-| `SKIP_CLIENT` | No | `false` | Set to `true` to force headless even when game client is installed |
+| `FACTORIO_USERNAME` | No | — | Factorio.com username — triggers runtime game client download on first startup |
+| `FACTORIO_TOKEN` | No | — | Factorio.com token (from factorio.com/profile) |
+| `FACTORIO_CLIENT_BUILD` | No | `expansion` | Runtime client variant: `expansion` (Space Age) or `alpha` (base game) |
+| `FACTORIO_CLIENT_TAG` | No | `stable` | Factorio client version tag for runtime download |
+| `SKIP_CLIENT` | No | `false` | Set to `true` to force headless even when game client is available |
 
 ### Build Arguments (set at `docker build` / `docker compose build` time)
 | Argument | Default | Description |
@@ -155,7 +162,7 @@ When the controller volume is wiped but host volumes persist, the controller gen
 | `FACTORIO_HEADLESS_TAG` | `stable` | Factorio headless version to download into the host image |
 | `FACTORIO_HEADLESS_SHA256` | — | SHA256 checksum for headless archive (skips verification if empty) |
 | `INSTALL_FACTORIO_CLIENT` | `false` | Install full game client alongside headless for graphical asset export |
-| `FACTORIO_CLIENT_BUILD` | `alpha` | Client variant: `alpha` (base game) or `expansion` (Space Age) |
+| `FACTORIO_CLIENT_BUILD` | `expansion` | Client variant: `alpha` (base game) or `expansion` (Space Age) |
 | `FACTORIO_CLIENT_TAG` | `stable` | Factorio client version tag (same format as headless) |
 | `FACTORIO_CLIENT_USERNAME` | — | Factorio.com username (required when `INSTALL_FACTORIO_CLIENT=true`) |
 | `FACTORIO_CLIENT_TOKEN` | — | Factorio.com token (required when `INSTALL_FACTORIO_CLIENT=true`) |
@@ -170,6 +177,7 @@ When the controller volume is wiped but host volumes persist, the controller gen
 | `/clusterio/tokens` | Shared token exchange | Controller: rw, Hosts: ro |
 | `/clusterio/seed-data` | Seed data for first run | Controller only, read-only |
 | `/clusterio/seed-mods` | Mod pre-cache for hosts | Hosts only, read-only |
+| `/clusterio/factorio-client` | Runtime-downloaded game client | `external: true` — survives `down -v` |
 | `/clusterio/external_plugins` | External plugin directories | **Must be read-write** (npm install runs) |
 
 **Critical**: External plugins mount must NOT be `:ro` — the entrypoint runs `npm install` inside each plugin directory.
@@ -180,6 +188,7 @@ When the controller volume is wiped but host volumes persist, the controller gen
 ```bash
 cp .env.example .env
 # Edit .env: set INIT_CLUSTERIO_ADMIN=your_username
+docker volume create factorio-client
 docker compose up -d
 # Access Web UI at http://localhost:8080
 ```
@@ -193,7 +202,7 @@ docker build -f Dockerfile.host -t clusterio-host .              # Host only
 
 ### Clean Restart
 ```bash
-docker compose down -v   # Remove containers AND volumes
+docker compose down -v   # Remove containers AND volumes (factorio-client persists — it's external)
 docker compose up -d     # Fresh start with re-seeding
 ```
 
@@ -306,15 +315,7 @@ Set `"instance.auto_start": false` to prevent auto-starting after seeding.
 ### 8. INSTALL_FACTORIO_CLIENT Credentials Exposed in Image History
 **Symptom**: `docker history` reveals Factorio account credentials
 **Cause**: Build args (`FACTORIO_CLIENT_USERNAME`, `FACTORIO_CLIENT_TOKEN`) are passed via `--build-arg` which can appear in image layer metadata
-**Fix**: Use BuildKit secrets instead:
-```bash
-DOCKER_BUILDKIT=1 docker build -f Dockerfile.host \
-  --build-arg INSTALL_FACTORIO_CLIENT=true \
-  --build-arg FACTORIO_CLIENT_BUILD=alpha \
-  --secret id=factorio_creds,env=FACTORIO_CREDENTIALS \
-  -t clusterio-host .
-```
-Alternatively, accept the risk for private/local images only.
+**Fix**: Use the **runtime download** instead (set `FACTORIO_USERNAME` + `FACTORIO_TOKEN` as env vars). Credentials are only runtime env vars — they never appear in image layers. The build-time path (`INSTALL_FACTORIO_CLIENT=true`) is only needed for private images; use BuildKit secrets if you must bake the client in.
 
 ### 9. Game Client Image Is Much Larger Than Headless
 **Symptom**: Host image is ~300-500 MB larger than expected

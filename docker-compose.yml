@@ -89,7 +89,7 @@ services:
       args:
         FACTORIO_HEADLESS_TAG: ${FACTORIO_HEADLESS_TAG:-stable}
         INSTALL_FACTORIO_CLIENT: ${INSTALL_FACTORIO_CLIENT:-true}
-        FACTORIO_CLIENT_BUILD: ${FACTORIO_CLIENT_BUILD:-alpha}
+        FACTORIO_CLIENT_BUILD: ${FACTORIO_CLIENT_BUILD:-expansion}
         FACTORIO_CLIENT_TAG: ${FACTORIO_CLIENT_TAG:-stable}
         FACTORIO_CLIENT_USERNAME: ${FACTORIO_USERNAME}
         FACTORIO_CLIENT_TOKEN: ${FACTORIO_TOKEN}
@@ -102,11 +102,12 @@ services:
       - "34100-34109:34100-34109/udp"
     volumes:
       - host-1-data:/clusterio/data
+      - factorio-client:/clusterio/factorio-client
       - shared-tokens:/clusterio/tokens:ro
       - ./seed-data/mods:/clusterio/seed-mods:ro
 
   # -------------------------------------------------------------------------
-  # Host 2 - Port range 34200-34299
+  # Host 2 - Port range 34200-34299 (headless only, no game client)
   # -------------------------------------------------------------------------
   clusterio-host-2:
     <<: *host-base
@@ -114,6 +115,7 @@ services:
     hostname: clusterio-host-2
     environment:
       - HOST_NAME=clusterio-host-2
+      - SKIP_CLIENT=true
     ports:
       - "34200-34209:34200-34209/udp"
     volumes:
@@ -149,4 +151,6 @@ volumes:
   host-2-data:        # Host 2 persistent data
   prometheus-data:    # Prometheus metrics storage
   shared-tokens:      # Token exchange between controller and hosts
+  factorio-client:    # Factorio game client (persists across `down -v`)
+    external: true
   

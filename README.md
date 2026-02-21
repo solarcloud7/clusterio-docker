@@ -58,12 +58,17 @@ docker pull ghcr.io/solarcloud7/clusterio-docker-host:latest
    INIT_CLUSTERIO_ADMIN=your_username
    ```
 
-4. Start the cluster:
+4. Create the external volume for the Factorio game client (persists across `docker compose down -v`):
+   ```bash
+   docker volume create factorio-client
+   ```
+
+5. Start the cluster:
    ```bash
    docker compose up -d
    ```
 
-5. Access the web UI at http://localhost:8080
+6. Access the web UI at http://localhost:8080
 
 ---
 
@@ -108,6 +113,7 @@ Each container uses a single data volume for all persistent storage:
 | Host | `/clusterio/data` | Config, instances, mods, logs |
 | Host | `/clusterio/tokens` | Token from controller (read-only) |
 | Host | `/clusterio/seed-mods` | Mod cache from seed data (read-only bind mount) |
+| Host | `/clusterio/factorio-client` | Runtime-downloaded game client (`external: true`, survives `down -v`) |
 
 ### Data Volume Structure
 
@@ -168,7 +174,11 @@ docker run -d -p 34100-34199:34100-34199/udp \
 | `CLUSTERIO_HOST_TOKEN` | *(auto from shared volume)* | Host authentication token |
 | `CONTROLLER_URL` | `http://clusterio-controller:8080/` | Controller URL |
 | `HOST_NAME` | Container hostname | Host identifier (must match token file name) |
-| `SKIP_CLIENT` | `false` | Force headless server even when the game client is installed |
+| `FACTORIO_USERNAME` | *(unset)* | Factorio.com username — triggers runtime game client download on first startup |
+| `FACTORIO_TOKEN` | *(unset)* | Factorio.com token from [factorio.com/profile](https://factorio.com/profile) |
+| `FACTORIO_CLIENT_BUILD` | `expansion` | Runtime client variant: `expansion` (Space Age) or `alpha` (base game) |
+| `FACTORIO_CLIENT_TAG` | `stable` | Factorio client version tag for runtime download |
+| `SKIP_CLIENT` | `false` | Force headless server even when the game client is available |
 | `FACTORIO_PORT_RANGE` | Auto from host ID | Override the auto-derived game port range (e.g., `34100-34199`) |
 
 ### Build Arguments
@@ -180,14 +190,14 @@ These are set at build time via `docker compose build` or `--build-arg`. In dock
 | `FACTORIO_HEADLESS_TAG` | `stable` | Factorio headless server version tag |
 | `FACTORIO_HEADLESS_SHA256` | *(unset)* | SHA256 checksum for headless archive (skips verification if empty) |
 | `INSTALL_FACTORIO_CLIENT` | `false` | Install full game client for graphical asset export (host only) |
-| `FACTORIO_CLIENT_BUILD` | `alpha` | Client variant: `alpha` (base game) or `expansion` (Space Age) |
+| `FACTORIO_CLIENT_BUILD` | `expansion` | Client variant: `alpha` (base game) or `expansion` (Space Age) |
 | `FACTORIO_CLIENT_TAG` | `stable` | Factorio client version tag |
 | `FACTORIO_CLIENT_USERNAME` | *(unset)* | Factorio.com username (required when `INSTALL_FACTORIO_CLIENT=true`) |
 | `FACTORIO_CLIENT_TOKEN` | *(unset)* | Factorio.com token (required when `INSTALL_FACTORIO_CLIENT=true`) |
 | `FACTORIO_CLIENT_SHA256` | *(unset)* | SHA256 checksum for game client archive (skips verification if empty) |
 | `CURL_RETRIES` | `8` | Number of curl retry attempts for Factorio downloads |
 
-> **Security**: Build args can appear in `docker history`. For production images, use BuildKit secrets instead (see `Dockerfile.host` comments).
+> **Note**: The build-time client path is only needed for private images. For most users, the **runtime download** (set `FACTORIO_USERNAME` + `FACTORIO_TOKEN` as host env vars) is simpler and more secure — credentials never appear in image layers.
 
 ---
 
