@@ -1,7 +1,7 @@
 $ErrorActionPreference = "Stop"
 
-# Get admin username from env file or use default
-$EnvFile = Join-Path $PSScriptRoot "..\env\controller.env"
+# Get admin username from .env file or use default
+$EnvFile = Join-Path $PSScriptRoot "..\.env"
 $AdminUser = "admin"
 if (Test-Path $EnvFile) {
     $EnvContent = Get-Content $EnvFile

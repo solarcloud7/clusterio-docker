@@ -9,6 +9,14 @@ scrape_configs:
       - targets: ['clusterio-controller:8080']
     metrics_path: /metrics
 
+  # Clusterio Host metrics
+  - job_name: 'clusterio-hosts'
+    static_configs:
+      - targets:
+          - 'clusterio-host-1:8080'
+          - 'clusterio-host-2:8080'
+    metrics_path: /metrics
+
   # Prometheus self-monitoring
   - job_name: 'prometheus'
     static_configs:

@@ -44,7 +44,7 @@ x-host-base: &host-base
       condition: service_healthy
   restart: unless-stopped
   # To use external plugins, add to each host's volumes:
-  # - ./plugins:/clusterio/external_plugins:ro
+  # - ./plugins:/clusterio/external_plugins
 
 services:
   clusterio-controller:
@@ -63,7 +63,7 @@ services:
       - controller-data:/clusterio/data
       - shared-tokens:/clusterio/tokens
       - ./seed-data:/clusterio/seed-data:ro         # Seed instances on first run
-      # - ./plugins:/clusterio/external_plugins:ro  # Uncomment for external plugins
+      # - ./plugins:/clusterio/external_plugins  # Uncomment for external plugins
     environment:
       - HOST_COUNT=${HOST_COUNT:-2}
     networks:

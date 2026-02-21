@@ -38,7 +38,7 @@ WORKDIR /clusterio
 USER clusterio
 
 # Install Clusterio controller package and plugins
-RUN npm install \
+RUN npm install --omit=dev \
     @clusterio/controller \
     @clusterio/ctl \
     @clusterio/plugin-global_chat \

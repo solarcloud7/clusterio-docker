@@ -80,7 +80,7 @@ WORKDIR /clusterio
 USER clusterio
 
 # Install Clusterio packages directly
-RUN npm install \
+RUN npm install --omit=dev \
     @clusterio/host \
     @clusterio/ctl \
     @clusterio/plugin-global_chat \
@@ -103,6 +103,6 @@ COPY --chmod=755 scripts/install-plugins.sh /scripts/install-plugins.sh
 COPY --chmod=755 scripts/host-entrypoint.sh /host-entrypoint.sh
 
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
-  CMD test -f /clusterio/data/config-host.json || exit 1
+  CMD pgrep -f clusteriohost > /dev/null || exit 1
 
 ENTRYPOINT ["/host-entrypoint.sh"]

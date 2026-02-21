@@ -123,6 +123,9 @@ if [ "$FIRST_RUN" = true ] || [ ! -f "$SEED_MARKER" ]; then
     echo "  WARNING: Mod pack '$DEFAULT_MOD_PACK' not found — set manually in Web UI"
   fi
 
+  # Seed mods before instances (instances may need them to start)
+  /scripts/seed-mods.sh "$CONTROL_CONFIG"
+
   # Seed instances from seed-data/hosts/
   /scripts/seed-instances.sh "$CONTROL_CONFIG" "$HOST_COUNT"
 
@@ -132,8 +135,7 @@ if [ "$FIRST_RUN" = true ] || [ ! -f "$SEED_MARKER" ]; then
   echo "Seeding complete."
 fi
 
-# Seed mods on every startup (like host pre-caching).
-# Existing mods are skipped; new mods are uploaded.
+# Upload any new mods added since last run (existing mods are skipped)
 /scripts/seed-mods.sh "$CONTROL_CONFIG"
 
 # Keep controller running
