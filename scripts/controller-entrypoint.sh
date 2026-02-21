@@ -58,7 +58,7 @@ if [ ! -f "$CONFIG_PATH" ]; then
 
   if [ -z "$INIT_CLUSTERIO_ADMIN" ]; then
     echo "ERROR: INIT_CLUSTERIO_ADMIN is not set. Cannot create admin user."
-    echo "       Set it in controller.env or as an environment variable."
+    echo "       Set it in .env or as an environment variable."
     exit 1
   fi
 
