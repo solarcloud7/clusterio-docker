@@ -23,6 +23,8 @@ x-host-base: &host-base
     dockerfile: Dockerfile.host
     args:
       FACTORIO_HEADLESS_TAG: ${FACTORIO_HEADLESS_TAG:-stable}
+      # FACTORIO_HEADLESS_SHA256: ${FACTORIO_HEADLESS_SHA256:-}
+      # CURL_RETRIES: ${CURL_RETRIES:-8}
       # Optional: install the full Factorio game client for graphical asset export.
       # When enabled, Clusterio's "export-data" flow can produce complete item
       # spritesheets with icons. Requires a valid Factorio account.
@@ -91,6 +93,7 @@ services:
         FACTORIO_CLIENT_TAG: ${FACTORIO_CLIENT_TAG:-stable}
         FACTORIO_CLIENT_USERNAME: ${FACTORIO_USERNAME}
         FACTORIO_CLIENT_TOKEN: ${FACTORIO_TOKEN}
+        # FACTORIO_CLIENT_SHA256: ${FACTORIO_CLIENT_SHA256:-}
     container_name: clusterio-host-1
     hostname: clusterio-host-1
     environment:

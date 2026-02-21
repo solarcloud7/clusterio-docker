@@ -13,6 +13,8 @@ LABEL org.opencontainers.image.source="https://github.com/solarcloud7/clusterio-
 
 # Build arguments for host configuration
 ARG FACTORIO_HEADLESS_TAG=stable
+ARG FACTORIO_HEADLESS_SHA256=""
+ARG CURL_RETRIES=8
 
 # Optional: install full Factorio game client for graphical asset export.
 # The game client includes icon/graphics data that the headless server lacks,
@@ -32,6 +34,7 @@ ARG FACTORIO_CLIENT_BUILD=alpha
 ARG FACTORIO_CLIENT_TAG=stable
 ARG FACTORIO_CLIENT_USERNAME=""
 ARG FACTORIO_CLIENT_TOKEN=""
+ARG FACTORIO_CLIENT_SHA256=""
 
 # Environment variables (can be overridden at runtime)
 ENV FACTORIO_HOME=/opt/factorio \
@@ -49,22 +52,39 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     gosu \
  && rm -rf /var/lib/apt/lists/*
 
+# Use bash with strict error handling (errexit + pipefail)
+SHELL ["/bin/bash", "-eo", "pipefail", "-c"]
+
 # Download and install Factorio headless server
-RUN curl -fsSL "https://factorio.com/get-download/${FACTORIO_HEADLESS_TAG}/headless/linux64" -o /tmp/factorio.tar.xz \
- && tar -xJf /tmp/factorio.tar.xz -C /opt \
- && rm /tmp/factorio.tar.xz
+RUN archive="/tmp/factorio.tar.xz" \
+ && curl -fsSL --retry "$CURL_RETRIES" \
+      "https://factorio.com/get-download/${FACTORIO_HEADLESS_TAG}/headless/linux64" \
+      -o "$archive" \
+ && if [ -n "$FACTORIO_HEADLESS_SHA256" ]; then \
+      echo "${FACTORIO_HEADLESS_SHA256}  ${archive}" | sha256sum -c; \
+    else \
+      echo "WARNING: No SHA256 provided for headless server — skipping verification"; \
+    fi \
+ && tar -xJf "$archive" -C /opt \
+ && rm "$archive"
 
 # Optionally download and install the full Factorio game client.
 # Runs as root before user creation so chown can cover the new directory.
 # The client is installed to /opt/factorio-client alongside the headless server.
 RUN if [ "$INSTALL_FACTORIO_CLIENT" = "true" ]; then \
       echo "Downloading Factorio game client (build=${FACTORIO_CLIENT_BUILD}, tag=${FACTORIO_CLIENT_TAG})..." && \
-      curl -fsSL \
+      archive="/tmp/factorio-client.tar.xz" && \
+      curl -fsSL --retry "$CURL_RETRIES" \
         "https://factorio.com/get-download/${FACTORIO_CLIENT_TAG}/${FACTORIO_CLIENT_BUILD}/linux64?username=${FACTORIO_CLIENT_USERNAME}&token=${FACTORIO_CLIENT_TOKEN}" \
-        -o /tmp/factorio-client.tar.xz && \
+        -o "$archive" && \
+      if [ -n "$FACTORIO_CLIENT_SHA256" ]; then \
+        echo "${FACTORIO_CLIENT_SHA256}  ${archive}" | sha256sum -c; \
+      else \
+        echo "WARNING: No SHA256 provided for game client — skipping verification"; \
+      fi && \
       mkdir -p /opt/factorio-client && \
-      tar -xJf /tmp/factorio-client.tar.xz -C /opt/factorio-client --strip-components=1 && \
-      rm /tmp/factorio-client.tar.xz && \
+      tar -xJf "$archive" -C /opt/factorio-client --strip-components=1 && \
+      rm "$archive" && \
       echo "Factorio game client installed to /opt/factorio-client"; \
     fi
 

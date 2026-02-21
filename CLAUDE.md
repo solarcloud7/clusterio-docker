@@ -153,11 +153,14 @@ When the controller volume is wiped but host volumes persist, the controller gen
 | Argument | Default | Description |
 |----------|---------|-------------|
 | `FACTORIO_HEADLESS_TAG` | `stable` | Factorio headless version to download into the host image |
+| `FACTORIO_HEADLESS_SHA256` | — | SHA256 checksum for headless archive (skips verification if empty) |
 | `INSTALL_FACTORIO_CLIENT` | `false` | Install full game client alongside headless for graphical asset export |
 | `FACTORIO_CLIENT_BUILD` | `alpha` | Client variant: `alpha` (base game) or `expansion` (Space Age) |
 | `FACTORIO_CLIENT_TAG` | `stable` | Factorio client version tag (same format as headless) |
 | `FACTORIO_CLIENT_USERNAME` | — | Factorio.com username (required when `INSTALL_FACTORIO_CLIENT=true`) |
 | `FACTORIO_CLIENT_TOKEN` | — | Factorio.com token (required when `INSTALL_FACTORIO_CLIENT=true`) |
+| `FACTORIO_CLIENT_SHA256` | — | SHA256 checksum for game client archive (skips verification if empty) |
+| `CURL_RETRIES` | `8` | Number of curl retry attempts for Factorio downloads |
 
 ## Volume Mounts
 

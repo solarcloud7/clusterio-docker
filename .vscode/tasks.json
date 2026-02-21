@@ -10,6 +10,16 @@
                 "reveal": "always",
                 "panel": "shared"
             }
+        },
+        {
+            "label": "Clean Restart",
+            "type": "shell",
+            "command": "docker compose down -v && docker compose build && docker compose up -d",
+            "problemMatcher": [],
+            "presentation": {
+                "reveal": "always",
+                "panel": "shared"
+            }
         }
     ]
 }

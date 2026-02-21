@@ -178,11 +178,14 @@ These are set at build time via `docker compose build` or `--build-arg`. In dock
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `FACTORIO_HEADLESS_TAG` | `stable` | Factorio headless server version tag |
+| `FACTORIO_HEADLESS_SHA256` | *(unset)* | SHA256 checksum for headless archive (skips verification if empty) |
 | `INSTALL_FACTORIO_CLIENT` | `false` | Install full game client for graphical asset export (host only) |
 | `FACTORIO_CLIENT_BUILD` | `alpha` | Client variant: `alpha` (base game) or `expansion` (Space Age) |
 | `FACTORIO_CLIENT_TAG` | `stable` | Factorio client version tag |
 | `FACTORIO_CLIENT_USERNAME` | *(unset)* | Factorio.com username (required when `INSTALL_FACTORIO_CLIENT=true`) |
 | `FACTORIO_CLIENT_TOKEN` | *(unset)* | Factorio.com token (required when `INSTALL_FACTORIO_CLIENT=true`) |
+| `FACTORIO_CLIENT_SHA256` | *(unset)* | SHA256 checksum for game client archive (skips verification if empty) |
+| `CURL_RETRIES` | `8` | Number of curl retry attempts for Factorio downloads |
 
 > **Security**: Build args can appear in `docker history`. For production images, use BuildKit secrets instead (see `Dockerfile.host` comments).
 
