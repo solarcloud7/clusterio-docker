@@ -23,8 +23,20 @@ x-host-base: &host-base
     dockerfile: Dockerfile.host
     args:
       FACTORIO_HEADLESS_TAG: ${FACTORIO_HEADLESS_TAG:-stable}
+      # Optional: install the full Factorio game client for graphical asset export.
+      # When enabled, Clusterio's "export-data" flow can produce complete item
+      # spritesheets with icons. Requires a valid Factorio account.
+      #
+      # SECURITY: build args may appear in `docker history`. For production,
+      # use BuildKit secrets instead (see Dockerfile.host comments).
+      #
+      # INSTALL_FACTORIO_CLIENT: "true"
+      # FACTORIO_CLIENT_BUILD: "alpha"      # "alpha" = base game, "expansion" = Space Age
+      # FACTORIO_CLIENT_TAG: stable
+      # FACTORIO_CLIENT_USERNAME: "${FACTORIO_USERNAME}"
+      # FACTORIO_CLIENT_TOKEN: "${FACTORIO_TOKEN}"
   env_file:
-    - env/host.env
+    - .env
   networks:
     - clusterio-net
   depends_on:
@@ -42,7 +54,7 @@ services:
       args:
         CONTROLLER_HTTP_PORT: ${CONTROLLER_HTTP_PORT:-8080}
     env_file:
-      - env/controller.env
+      - .env
     container_name: clusterio-controller
     hostname: clusterio-controller
     ports:
@@ -65,10 +77,20 @@ services:
       start_period: 30s
 
   # -------------------------------------------------------------------------
-  # Host 1 - Port range 34100-34199
+  # Host 1 - Port range 34100-34199 - Full game client (graphical asset export)
   # -------------------------------------------------------------------------
   clusterio-host-1:
     <<: *host-base
+    build:
+      context: .
+      dockerfile: Dockerfile.host
+      args:
+        FACTORIO_HEADLESS_TAG: ${FACTORIO_HEADLESS_TAG:-stable}
+        INSTALL_FACTORIO_CLIENT: "true"
+        FACTORIO_CLIENT_BUILD: ${FACTORIO_CLIENT_BUILD:-alpha}
+        FACTORIO_CLIENT_TAG: ${FACTORIO_CLIENT_TAG:-stable}
+        FACTORIO_CLIENT_USERNAME: ${FACTORIO_USERNAME}
+        FACTORIO_CLIENT_TOKEN: ${FACTORIO_TOKEN}
     container_name: clusterio-host-1
     hostname: clusterio-host-1
     environment:

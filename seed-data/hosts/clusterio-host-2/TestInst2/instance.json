@@ -2,7 +2,7 @@
 	"instance.auto_start": true,
 	"factorio.version": "2.0.73",
 	"factorio.settings": {
-		"name": "Inst1",
+		"name": "Inst2",
 		"description": "Server description or Discord link",
 		"tags": ["clusterio"],
 		"max_players": 100,

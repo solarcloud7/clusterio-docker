@@ -28,13 +28,15 @@ Pre-built images are published to the GitHub Container Registry:
 
 | Image | Description |
 |-------|-------------|
-| `ghcr.io/solarcloud7/clusterio-controller` | Web UI, API, and cluster coordination |
-| `ghcr.io/solarcloud7/clusterio-host` | Factorio server host (runs game instances) |
+| `ghcr.io/solarcloud7/clusterio-docker-controller` | Web UI, API, and cluster coordination |
+| `ghcr.io/solarcloud7/clusterio-docker-host` | Factorio server host (runs game instances) |
 
 ```bash
-docker pull ghcr.io/solarcloud7/clusterio-controller:latest
-docker pull ghcr.io/solarcloud7/clusterio-host:latest
+docker pull ghcr.io/solarcloud7/clusterio-docker-controller:latest
+docker pull ghcr.io/solarcloud7/clusterio-docker-host:latest
 ```
+
+> **Note**: Image names include `-docker-` because CI derives them from the repository name (`clusterio-docker`).
 
 ## Quick Start
 
@@ -46,13 +48,12 @@ docker pull ghcr.io/solarcloud7/clusterio-host:latest
    cd clusterio-docker
    ```
 
-2. Create environment files:
+2. Create your environment file:
    ```bash
-   cp env/controller.env.example env/controller.env
-   cp env/host.env.example env/host.env
+   cp .env.example .env
    ```
 
-3. Edit `env/controller.env` and set your admin username:
+3. Edit `.env` and set your admin username:
    ```env
    INIT_CLUSTERIO_ADMIN=your_username
    ```
@@ -77,7 +78,7 @@ docker run -d \
   -v controller-data:/clusterio/data \
   -v shared-tokens:/clusterio/tokens \
   -e INIT_CLUSTERIO_ADMIN=your_username \
-  ghcr.io/solarcloud7/clusterio-controller
+  ghcr.io/solarcloud7/clusterio-docker-controller
 ```
 
 ### Host
@@ -90,7 +91,7 @@ docker run -d \
   -v shared-tokens:/clusterio/tokens:ro \
   -e CLUSTERIO_HOST_TOKEN=your_host_token \
   -e CONTROLLER_URL=http://your-controller:8080/ \
-  ghcr.io/solarcloud7/clusterio-host
+  ghcr.io/solarcloud7/clusterio-docker-host
 ```
 
 ---
@@ -134,14 +135,14 @@ docker run -d -p 8080:8080 \
   -v ./data/controller:/clusterio/data \
   -v ./tokens:/clusterio/tokens \
   -e INIT_CLUSTERIO_ADMIN=admin \
-  ghcr.io/solarcloud7/clusterio-controller
+  ghcr.io/solarcloud7/clusterio-docker-controller
 
 # Host  
 docker run -d -p 34100-34199:34100-34199/udp \
   -v ./data/host:/clusterio/data \
   -v ./tokens:/clusterio/tokens:ro \
   -e CLUSTERIO_HOST_TOKEN=your_token \
-  ghcr.io/solarcloud7/clusterio-host
+  ghcr.io/solarcloud7/clusterio-docker-host
 ```
 
 ---
@@ -156,6 +157,7 @@ docker run -d -p 34100-34199:34100-34199/udp \
 | `CONTROLLER_HTTP_PORT` | `8080` | Web UI / API port |
 | `CONTROLLER_PUBLIC_ADDRESS` | *(unset)* | Public URL for external access (standalone usage) |
 | `HOST_COUNT` | `0` (standalone) / `2` (compose) | Number of host tokens to generate |
+| `DEFAULT_MOD_PACK` | `Base Game 2.0` | Default mod pack for new instances (first run only). Set to `Space Age 2.0` for DLC. |
 | `FACTORIO_USERNAME` | *(unset)* | Factorio account username (for mod portal & multiplayer) |
 | `FACTORIO_TOKEN` | *(unset)* | Factorio account token from [factorio.com/profile](https://factorio.com/profile) |
 
@@ -166,6 +168,23 @@ docker run -d -p 34100-34199:34100-34199/udp \
 | `CLUSTERIO_HOST_TOKEN` | *(auto from shared volume)* | Host authentication token |
 | `CONTROLLER_URL` | `http://clusterio-controller:8080/` | Controller URL |
 | `HOST_NAME` | Container hostname | Host identifier (must match token file name) |
+| `SKIP_CLIENT` | `false` | Force headless server even when the game client is installed |
+| `FACTORIO_PORT_RANGE` | Auto from host ID | Override the auto-derived game port range (e.g., `34100-34199`) |
+
+### Build Arguments
+
+These are set at build time via `docker compose build` or `--build-arg`. In docker-compose.yml they are interpolated from `.env`.
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `FACTORIO_HEADLESS_TAG` | `stable` | Factorio headless server version tag |
+| `INSTALL_FACTORIO_CLIENT` | `false` | Install full game client for graphical asset export (host only) |
+| `FACTORIO_CLIENT_BUILD` | `alpha` | Client variant: `alpha` (base game) or `expansion` (Space Age) |
+| `FACTORIO_CLIENT_TAG` | `stable` | Factorio client version tag |
+| `FACTORIO_CLIENT_USERNAME` | *(unset)* | Factorio.com username (required when `INSTALL_FACTORIO_CLIENT=true`) |
+| `FACTORIO_CLIENT_TOKEN` | *(unset)* | Factorio.com token (required when `INSTALL_FACTORIO_CLIENT=true`) |
+
+> **Security**: Build args can appear in `docker history`. For production images, use BuildKit secrets instead (see `Dockerfile.host` comments).
 
 ---
 
@@ -200,7 +219,7 @@ For standalone containers or custom host names:
      -v host-data:/clusterio/data \
      -e CLUSTERIO_HOST_TOKEN=eyJhbGci... \
      -e CONTROLLER_URL=http://your-controller:8080/ \
-     ghcr.io/solarcloud7/clusterio-host
+     ghcr.io/solarcloud7/clusterio-docker-host
    ```
 
 ### Option 3: Web UI
@@ -223,7 +242,8 @@ seed-data/
 └── hosts/
     └── clusterio-host-1/  # Must match docker-compose hostname
         └── MyInstance/
-            └── world.zip  # Save file to upload
+            ├── instance.json  # Optional: instance config overrides
+            └── world.zip      # Save file to upload
 ```
 
 On first run (clean volumes), the controller automatically:
@@ -242,7 +262,8 @@ Hosts pre-cache mods locally from the seed-data mount on every startup for faste
 ## Viewing Logs
 
 ### Dozzle
-https://github.com/amir20/dozzle
+
+[Dozzle](https://github.com/amir20/dozzle) is a lightweight, real-time log viewer for Docker containers with a clean web UI. Great for monitoring multiple containers in one place.
 
 ### Docker Desktop 
 
@@ -332,6 +353,8 @@ To use external Clusterio plugins, mount a plugins directory into the containers
 1. Uncomment the external plugins volume in `docker-compose.yml` for the controller and each host
 2. Place plugin directories (each containing a `package.json`) in the `plugins/` folder
 3. Plugins are automatically installed on container startup
+
+> **Important**: The plugins mount must NOT be read-only (`:ro`). The entrypoint runs `npm install` inside each plugin directory.
 
 ---
 

@@ -45,6 +45,19 @@ if [ -d "$SEED_MODS_DIR" ]; then
   fi
 fi
 
+# Determine which Factorio installation to use.
+# If the full game client was installed at build time (INSTALL_FACTORIO_CLIENT=true),
+# use it instead of the headless server. The client is a superset of headless for
+# server mode and additionally provides icon/graphics data for Clusterio's export-data flow.
+# Set SKIP_CLIENT=true to force headless even when the client is present.
+FACTORIO_CLIENT_HOME="${FACTORIO_CLIENT_HOME:-/opt/factorio-client}"
+if [ -d "$FACTORIO_CLIENT_HOME" ] && [ "${SKIP_CLIENT:-false}" != "true" ]; then
+    FACTORIO_DIR="$FACTORIO_CLIENT_HOME"
+    echo "Factorio game client detected — using $FACTORIO_DIR (enables graphical asset export)"
+else
+    FACTORIO_DIR="$FACTORIO_HOME"
+fi
+
 get_token() {
     # Priority 1: Environment variable (for standalone container usage)
     if [ -n "$CLUSTERIO_HOST_TOKEN" ]; then
@@ -65,9 +78,17 @@ get_token() {
 if [ -f "$CONFIG_PATH" ]; then
     EXISTING_TOKEN=$(gosu clusterio npx clusteriohost --log-level error config get host.controller_token --config "$CONFIG_PATH" 2>/dev/null || echo "")
     if [ -n "$EXISTING_TOKEN" ] && [ "$EXISTING_TOKEN" != "null" ]; then
+        # Sanity check: a valid JWT has exactly 2 dots (three base64 segments).
+        # A malformed token causes fatal auth failure — reconfigure if invalid.
+        TOKEN_DOTS=$(echo "$EXISTING_TOKEN" | tr -cd '.' | wc -c)
+        if [ "$TOKEN_DOTS" -ne 2 ]; then
+            echo "Stored token is malformed (not a valid JWT) — reconfiguring host..."
+            rm -f "$CONFIG_PATH"
+        fi
+
         # Token desync detection: if the shared token volume has a different token
         # (e.g. controller volume was wiped and regenerated), reconfigure the host
-        if [ -f "$TOKEN_FILE" ]; then
+        if [ -f "$CONFIG_PATH" ] && [ -f "$TOKEN_FILE" ]; then
             NEW_TOKEN=$(cat "$TOKEN_FILE")
             if [ "$EXISTING_TOKEN" != "$NEW_TOKEN" ]; then
                 echo "Token mismatch detected (controller may have been re-initialized) — reconfiguring host..."
@@ -75,8 +96,13 @@ if [ -f "$CONFIG_PATH" ]; then
             fi
         fi
 
-        # If config still exists (no desync), start normally
+        # If config still exists (no desync), check factorio_directory is up to date
         if [ -f "$CONFIG_PATH" ]; then
+            CURRENT_FACTORIO_DIR=$(gosu clusterio npx clusteriohost --log-level error config get host.factorio_directory --config "$CONFIG_PATH" 2>/dev/null || echo "")
+            if [ -n "$CURRENT_FACTORIO_DIR" ] && [ "$CURRENT_FACTORIO_DIR" != "$FACTORIO_DIR" ]; then
+                echo "Updating factorio_directory: $CURRENT_FACTORIO_DIR → $FACTORIO_DIR"
+                gosu clusterio npx clusteriohost --log-level error config set host.factorio_directory "$FACTORIO_DIR" --config "$CONFIG_PATH"
+            fi
             echo "Host already configured, starting..."
             exec gosu clusterio npx clusteriohost run --config "$CONFIG_PATH"
         fi
@@ -111,7 +137,7 @@ gosu clusterio npx clusteriohost --log-level error config set host.id "$HOST_ID"
 gosu clusterio npx clusteriohost --log-level error config set host.name "$HOST_NAME" --config "$CONFIG_PATH"
 gosu clusterio npx clusteriohost --log-level error config set host.controller_url "${CONTROLLER_URL:-http://clusterio-controller:8080/}" --config "$CONFIG_PATH"
 gosu clusterio npx clusteriohost --log-level error config set host.controller_token "$TOKEN" --config "$CONFIG_PATH"
-gosu clusterio npx clusteriohost --log-level error config set host.factorio_directory /opt/factorio --config "$CONFIG_PATH"
+gosu clusterio npx clusteriohost --log-level error config set host.factorio_directory "$FACTORIO_DIR" --config "$CONFIG_PATH"
 gosu clusterio npx clusteriohost --log-level error config set host.instances_directory "$DATA_DIR/instances" --config "$CONFIG_PATH"
 gosu clusterio npx clusteriohost --log-level error config set host.factorio_port_range "$FACTORIO_PORT_RANGE" --config "$CONFIG_PATH"
 

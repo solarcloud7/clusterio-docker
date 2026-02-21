@@ -97,9 +97,8 @@ jobs:
 
       - name: Set up test environment
         run: |
-          cp env/controller.env.example env/controller.env
-          cp env/host.env.example env/host.env
-          echo "INIT_CLUSTERIO_ADMIN=testadmin" >> env/controller.env
+          cp .env.example .env
+          echo "INIT_CLUSTERIO_ADMIN=testadmin" >> .env
 
           # Create database seed from examples
           cp seed-data/controller/database/users.example.json seed-data/controller/database/users.json

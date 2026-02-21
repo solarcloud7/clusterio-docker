@@ -14,8 +14,28 @@ LABEL org.opencontainers.image.source="https://github.com/solarcloud7/clusterio-
 # Build arguments for host configuration
 ARG FACTORIO_HEADLESS_TAG=stable
 
+# Optional: install full Factorio game client for graphical asset export.
+# The game client includes icon/graphics data that the headless server lacks,
+# enabling Clusterio's export-data flow to produce complete item spritesheets.
+# When installed, the entrypoint will use the client as the factorio_directory.
+#
+# SECURITY NOTE: Build args can appear in `docker history`. For production,
+# prefer BuildKit secrets:
+#   DOCKER_BUILDKIT=1 docker build \
+#     --secret id=factorio_username,env=FACTORIO_USERNAME \
+#     --secret id=factorio_token,env=FACTORIO_TOKEN ...
+ARG INSTALL_FACTORIO_CLIENT=false
+ARG FACTORIO_CLIENT_BUILD=alpha
+# FACTORIO_CLIENT_BUILD options:
+#   "alpha"     — base game without Space Age DLC (default)
+#   "expansion" — full game including Space Age DLC
+ARG FACTORIO_CLIENT_TAG=stable
+ARG FACTORIO_CLIENT_USERNAME=""
+ARG FACTORIO_CLIENT_TOKEN=""
+
 # Environment variables (can be overridden at runtime)
 ENV FACTORIO_HOME=/opt/factorio \
+    FACTORIO_CLIENT_HOME=/opt/factorio-client \
     NODE_ENV=production \
     NODE_OPTIONS=--no-deprecation \
     NPM_CONFIG_UPDATE_NOTIFIER=false \
@@ -34,10 +54,25 @@ RUN curl -fsSL "https://factorio.com/get-download/${FACTORIO_HEADLESS_TAG}/headl
  && tar -xJf /tmp/factorio.tar.xz -C /opt \
  && rm /tmp/factorio.tar.xz
 
+# Optionally download and install the full Factorio game client.
+# Runs as root before user creation so chown can cover the new directory.
+# The client is installed to /opt/factorio-client alongside the headless server.
+RUN if [ "$INSTALL_FACTORIO_CLIENT" = "true" ]; then \
+      echo "Downloading Factorio game client (build=${FACTORIO_CLIENT_BUILD}, tag=${FACTORIO_CLIENT_TAG})..." && \
+      curl -fsSL \
+        "https://factorio.com/get-download/${FACTORIO_CLIENT_TAG}/${FACTORIO_CLIENT_BUILD}/linux64?username=${FACTORIO_CLIENT_USERNAME}&token=${FACTORIO_CLIENT_TOKEN}" \
+        -o /tmp/factorio-client.tar.xz && \
+      mkdir -p /opt/factorio-client && \
+      tar -xJf /tmp/factorio-client.tar.xz -C /opt/factorio-client --strip-components=1 && \
+      rm /tmp/factorio-client.tar.xz && \
+      echo "Factorio game client installed to /opt/factorio-client"; \
+    fi
+
 # Create clusterio user and directory
 RUN useradd -m -s /bin/bash clusterio && \
     mkdir -p /clusterio && \
-    chown clusterio:clusterio /clusterio /opt/factorio
+    chown clusterio:clusterio /clusterio /opt/factorio && \
+    if [ -d /opt/factorio-client ]; then chown -R clusterio:clusterio /opt/factorio-client; fi
 
 WORKDIR /clusterio
 

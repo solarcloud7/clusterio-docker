@@ -17,12 +17,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with th
 
 ```
 clusterio-docker/
+├── .env.example                   # Environment template (all settings in one file)
 ├── Dockerfile.controller          # Controller image (Node.js + Clusterio controller/ctl + plugins)
 ├── Dockerfile.host                # Host image (Node.js + Clusterio host/ctl + Factorio headless + plugins)
 ├── docker-compose.yml             # Default 2-host cluster for local development/testing
-├── env/
-│   ├── controller.env.example     # Controller environment template
-│   └── host.env.example           # Host environment template
 ├── scripts/
 │   ├── controller-entrypoint.sh   # Controller startup: first-run detection, bootstrap, seeding
 │   ├── host-entrypoint.sh         # Host startup: token loading, config, desync detection
@@ -149,11 +147,17 @@ When the controller volume is wiped but host volumes persist, the controller gen
 | `HOST_NAME` | No | Container hostname | Must match `clusterio-host-N` pattern |
 | `CONTROLLER_URL` | No | `http://clusterio-controller:8080/` | Controller address |
 | `CLUSTERIO_HOST_TOKEN` | No | Auto from shared volume | Manual token override |
+| `SKIP_CLIENT` | No | `false` | Set to `true` to force headless even when game client is installed |
 
 ### Build Arguments (set at `docker build` / `docker compose build` time)
 | Argument | Default | Description |
 |----------|---------|-------------|
 | `FACTORIO_HEADLESS_TAG` | `stable` | Factorio headless version to download into the host image |
+| `INSTALL_FACTORIO_CLIENT` | `false` | Install full game client alongside headless for graphical asset export |
+| `FACTORIO_CLIENT_BUILD` | `alpha` | Client variant: `alpha` (base game) or `expansion` (Space Age) |
+| `FACTORIO_CLIENT_TAG` | `stable` | Factorio client version tag (same format as headless) |
+| `FACTORIO_CLIENT_USERNAME` | — | Factorio.com username (required when `INSTALL_FACTORIO_CLIENT=true`) |
+| `FACTORIO_CLIENT_TOKEN` | — | Factorio.com token (required when `INSTALL_FACTORIO_CLIENT=true`) |
 
 ## Volume Mounts
 
@@ -171,9 +175,8 @@ When the controller volume is wiped but host volumes persist, the controller gen
 
 ### Quick Start
 ```bash
-cp env/controller.env.example env/controller.env
-cp env/host.env.example env/host.env
-# Edit controller.env: set INIT_CLUSTERIO_ADMIN=your_username
+cp .env.example .env
+# Edit .env: set INIT_CLUSTERIO_ADMIN=your_username
 docker compose up -d
 # Access Web UI at http://localhost:8080
 ```
@@ -296,3 +299,21 @@ Set `"instance.auto_start": false` to prevent auto-starting after seeding.
 **Symptom**: Instances start without DLC mods (Space Age, etc.)
 **Cause**: `DEFAULT_MOD_PACK` env var defaults to `"Base Game 2.0"`
 **Fix**: Set `DEFAULT_MOD_PACK=Space Age 2.0` in controller env for Space Age support. Requires volume wipe + redeploy (mod pack is set on first run only).
+
+### 8. INSTALL_FACTORIO_CLIENT Credentials Exposed in Image History
+**Symptom**: `docker history` reveals Factorio account credentials
+**Cause**: Build args (`FACTORIO_CLIENT_USERNAME`, `FACTORIO_CLIENT_TOKEN`) are passed via `--build-arg` which can appear in image layer metadata
+**Fix**: Use BuildKit secrets instead:
+```bash
+DOCKER_BUILDKIT=1 docker build -f Dockerfile.host \
+  --build-arg INSTALL_FACTORIO_CLIENT=true \
+  --build-arg FACTORIO_CLIENT_BUILD=alpha \
+  --secret id=factorio_creds,env=FACTORIO_CREDENTIALS \
+  -t clusterio-host .
+```
+Alternatively, accept the risk for private/local images only.
+
+### 9. Game Client Image Is Much Larger Than Headless
+**Symptom**: Host image is ~300-500 MB larger than expected
+**Cause**: `INSTALL_FACTORIO_CLIENT=true` downloads the full game client (~450 MB) in addition to the headless server (~100 MB)
+**Fix**: Only enable for hosts that need export-data functionality. The headless server is sufficient for running game instances — the client is only needed for Clusterio's graphical asset export.
