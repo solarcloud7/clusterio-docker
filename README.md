@@ -163,7 +163,8 @@ docker run -d -p 34100-34199:34100-34199/udp \
 | `CONTROLLER_HTTP_PORT` | `8080` | Web UI / API port |
 | `CONTROLLER_PUBLIC_ADDRESS` | *(unset)* | Public URL for external access (standalone usage) |
 | `HOST_COUNT` | `0` (standalone) / `2` (compose) | Number of host tokens to generate |
-| `DEFAULT_MOD_PACK` | `Base Game 2.0` | Default mod pack for new instances (first run only). Set to `Space Age 2.0` for DLC. |
+| `DEFAULT_MOD_PACK` | `Base Game 2.0` | Default mod pack for new instances (first run only). Created automatically if not found. |
+| `DEFAULT_FACTORIO_VERSION` | `2.0` | Factorio version used when creating a new mod pack (only applies when `DEFAULT_MOD_PACK` doesn't match an existing pack) |
 | `FACTORIO_USERNAME` | *(unset)* | Factorio account username (for mod portal & multiplayer) |
 | `FACTORIO_TOKEN` | *(unset)* | Factorio account token from [factorio.com/profile](https://factorio.com/profile) |
 

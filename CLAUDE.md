@@ -119,6 +119,7 @@ clusterio-docker/
 | Token generation | ✅ | Inside `FIRST_RUN` block only |
 | Instance creation | ✅ | `instance list` + `grep -wF` before `instance create` |
 | Mod upload | ⚠️ Partial | Errors swallowed; controller may reject duplicates |
+| Mod pack membership | ✅ | `--add-mods` is idempotent; already-added mods are unchanged |
 | API seeding block | ✅ | `.seed-complete` marker file |
 | Host configuration | ✅ | Config file existence + token desync detection |
 
@@ -140,7 +141,8 @@ When the controller volume is wiped but host volumes persist, the controller gen
 | `CONTROLLER_HTTP_PORT` | No | `8080` | Web UI / API port |
 | `CONTROLLER_PUBLIC_ADDRESS` | No | — | Public URL for external access |
 | `HOST_COUNT` | No | `0` (standalone) / `2` (compose) | Host token count |
-| `DEFAULT_MOD_PACK` | No | `Base Game 2.0` | Mod pack name for instances |
+| `DEFAULT_MOD_PACK` | No | `Base Game 2.0` | Mod pack name for instances (created if not found) |
+| `DEFAULT_FACTORIO_VERSION` | No | `2.0` | Factorio version for auto-created mod packs |
 | `FACTORIO_USERNAME` | No | — | Factorio.com username |
 | `FACTORIO_TOKEN` | No | — | Factorio.com token |
 
@@ -310,7 +312,7 @@ Set `"instance.auto_start": false` to prevent auto-starting after seeding.
 ### 7. DEFAULT_MOD_PACK Defaults to Base Game
 **Symptom**: Instances start without DLC mods (Space Age, etc.)
 **Cause**: `DEFAULT_MOD_PACK` env var defaults to `"Base Game 2.0"`
-**Fix**: Set `DEFAULT_MOD_PACK=Space Age 2.0` in controller env for Space Age support. Requires volume wipe + redeploy (mod pack is set on first run only).
+**Fix**: Set `DEFAULT_MOD_PACK=Space Age 2.0` (or any custom name) in controller env. If the name doesn't match an existing pack, it's created automatically using `DEFAULT_FACTORIO_VERSION`. Requires volume wipe + redeploy (mod pack is set on first run only).
 
 ### 8. INSTALL_FACTORIO_CLIENT Credentials Exposed in Image History
 **Symptom**: `docker history` reveals Factorio account credentials

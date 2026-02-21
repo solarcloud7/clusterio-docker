@@ -101,12 +101,15 @@ seed-data/
 **How it works:**
 
 1. On every startup, all `.zip` files in `seed-data/mods/` are uploaded to the **controller** via the API (already-uploaded mods are skipped)
-2. **Hosts** pre-cache mods locally from the same seed-data mount on every startup — no network download needed
-3. **Instances** automatically get symlinks to the host's cached mods when they start
+2. Uploaded mods are automatically **added to the default mod pack** (`DEFAULT_MOD_PACK` env var, e.g., "Space Age 2.0"). The `--add-mods` command is idempotent — already-added mods are unchanged
+3. **Hosts** pre-cache mods locally from the same seed-data mount on every startup — no network download needed
+4. **Instances** automatically get symlinks to the host's cached mods when they start
 
 > **Important:** You only need to place mods in `seed-data/mods/`. Do **not** manually copy mods to hosts or instances — Clusterio handles distribution automatically. Both the controller upload and host-side caching run on every startup, so new mods added to `seed-data/mods/` are picked up without requiring a full volume wipe (`docker compose down -v`).
 
-After mods are uploaded, create a **Mod Pack** via the Web UI or CLI to assign mods to instances:
+> **Filename convention:** Mod zips must follow Factorio's naming convention: `modname_version.zip` (e.g., `squeak-through-2_0.1.3.zip`). The name and version are parsed from the filename to add the mod to the mod pack.
+
+You can also manage mod packs manually via the Web UI or CLI:
 
 ```bash
 # Create a mod pack

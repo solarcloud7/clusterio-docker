@@ -107,13 +107,30 @@ echo "Controller is ready"
 SEED_MARKER="$DATA_DIR/.seed-complete"
 CONTROL_CONFIG="$TOKENS_DIR/config-control.json"
 
+# Resolve default mod pack ID (used by both first-run seeding and ongoing mod uploads)
+DEFAULT_MOD_PACK="${DEFAULT_MOD_PACK:-Base Game 2.0}"
+DEFAULT_FACTORIO_VERSION="${DEFAULT_FACTORIO_VERSION:-2.0}"
+MOD_PACK_ID=$(gosu clusterio npx clusterioctl --log-level error mod-pack list \
+  --config "$CONTROL_CONFIG" 2>/dev/null \
+  | grep "$DEFAULT_MOD_PACK" | awk -F'|' '{print $1}' | tr -d ' ')
+
+# If the requested mod pack doesn't exist, create it
+if [ -z "$MOD_PACK_ID" ]; then
+  echo "Mod pack '$DEFAULT_MOD_PACK' not found — creating it (Factorio $DEFAULT_FACTORIO_VERSION)..."
+  CREATE_OUTPUT=$(gosu clusterio npx clusterioctl --log-level error mod-pack create \
+    "$DEFAULT_MOD_PACK" "$DEFAULT_FACTORIO_VERSION" \
+    --config "$CONTROL_CONFIG" 2>/dev/null)
+  echo "  $CREATE_OUTPUT"
+  # Parse ID from output: "Created mod pack <name> (<id>)"
+  MOD_PACK_ID=$(echo "$CREATE_OUTPUT" | grep -oE '\([0-9]+\)' | tr -d '()')
+  if [ -z "$MOD_PACK_ID" ]; then
+    echo "  WARNING: Failed to create mod pack '$DEFAULT_MOD_PACK'"
+  fi
+fi
+
 if [ "$FIRST_RUN" = true ] || [ ! -f "$SEED_MARKER" ]; then
   # Set default mod pack (required for instances to start)
-  DEFAULT_MOD_PACK="${DEFAULT_MOD_PACK:-Base Game 2.0}"
   echo "Setting default mod pack: $DEFAULT_MOD_PACK"
-  MOD_PACK_ID=$(gosu clusterio npx clusterioctl --log-level error mod-pack list \
-    --config "$CONTROL_CONFIG" 2>/dev/null \
-    | grep "$DEFAULT_MOD_PACK" | awk -F'|' '{print $1}' | tr -d ' ')
   if [ -n "$MOD_PACK_ID" ]; then
     gosu clusterio npx clusterioctl --log-level error controller config set \
       controller.default_mod_pack_id "$MOD_PACK_ID" \
@@ -124,7 +141,7 @@ if [ "$FIRST_RUN" = true ] || [ ! -f "$SEED_MARKER" ]; then
   fi
 
   # Seed mods before instances (instances may need them to start)
-  /scripts/seed-mods.sh "$CONTROL_CONFIG"
+  /scripts/seed-mods.sh "$CONTROL_CONFIG" "$MOD_PACK_ID"
 
   # Seed instances from seed-data/hosts/
   /scripts/seed-instances.sh "$CONTROL_CONFIG" "$HOST_COUNT"
@@ -136,7 +153,7 @@ if [ "$FIRST_RUN" = true ] || [ ! -f "$SEED_MARKER" ]; then
 fi
 
 # Upload any new mods added since last run (existing mods are skipped)
-/scripts/seed-mods.sh "$CONTROL_CONFIG"
+/scripts/seed-mods.sh "$CONTROL_CONFIG" "$MOD_PACK_ID"
 
 # Keep controller running
 wait $CONTROLLER_PID
