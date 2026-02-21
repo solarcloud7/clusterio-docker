@@ -120,6 +120,9 @@ jobs:
           echo 'INSTALL_FACTORIO_CLIENT=false' >> .env
           docker compose build
 
+      - name: Create external volumes
+        run: docker volume create factorio-client
+
       - name: Start services
         run: docker compose up -d
 
