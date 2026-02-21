@@ -49,7 +49,7 @@ fi
 # If FACTORIO_USERNAME + FACTORIO_TOKEN are set and the client is not already installed,
 # download it now. The client is stored in a persistent volume so it survives `down -v`.
 FACTORIO_CLIENT_HOME="${FACTORIO_CLIENT_HOME:-/opt/factorio-client}"
-FACTORIO_CLIENT_VOLUME_DIR="${FACTORIO_CLIENT_VOLUME_DIR:-/clusterio/factorio-client}"
+FACTORIO_CLIENT_VOLUME_DIR="${FACTORIO_CLIENT_VOLUME_DIR:-/opt/factorio-client}"
 
 # Check for actual binary presence (directory may exist as an empty mount point)
 client_in_image() { [ -x "$FACTORIO_CLIENT_HOME/bin/x64/factorio" ]; }
