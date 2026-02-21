@@ -114,7 +114,11 @@ jobs:
           echo '{"instance.auto_start": false}' > seed-data/hosts/clusterio-host-2/StoppedInstance/instance.json
 
       - name: Build images
-        run: docker compose build
+        run: |
+          # Skip game client — CI has no Factorio account credentials.
+          # The client requires authentication; headless does not.
+          echo 'INSTALL_FACTORIO_CLIENT=false' >> .env
+          docker compose build
 
       - name: Start services
         run: docker compose up -d
