@@ -75,14 +75,16 @@ services:
       context: .
       dockerfile: Dockerfile.host
       args:
-        # Full game client baked into image — enables Clusterio export-data.
-        # SECURITY: build args appear in `docker history`. For production,
-        # use runtime download (FACTORIO_USERNAME/TOKEN env vars) instead.
-        INSTALL_FACTORIO_CLIENT: "true"
-        FACTORIO_CLIENT_BUILD: expansion     # "alpha" = base game, "expansion" = Space Age
-        FACTORIO_CLIENT_TAG: stable
-        FACTORIO_CLIENT_USERNAME: ${FACTORIO_USERNAME}
-        FACTORIO_CLIENT_TOKEN: ${FACTORIO_TOKEN}
+        FACTORIO_HEADLESS_TAG: stable
+        # Uncomment to bake the full game client into host-1's image for
+        # Clusterio export-data (graphical asset export). Alternatively, set
+        # FACTORIO_USERNAME/TOKEN as runtime env vars for on-demand download.
+        # SECURITY: build args appear in `docker history`.
+        # INSTALL_FACTORIO_CLIENT: "true"
+        # FACTORIO_CLIENT_BUILD: expansion   # "alpha" = base game, "expansion" = Space Age
+        # FACTORIO_CLIENT_TAG: stable
+        # FACTORIO_CLIENT_USERNAME: ${FACTORIO_USERNAME}
+        # FACTORIO_CLIENT_TOKEN: ${FACTORIO_TOKEN}
         # FACTORIO_CLIENT_SHA256:
     container_name: clusterio-host-1
     hostname: clusterio-host-1
