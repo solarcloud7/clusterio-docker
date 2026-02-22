@@ -96,9 +96,21 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Set up test environment
+        id: setup
         run: |
           cp .env.example .env
           echo "INIT_CLUSTERIO_ADMIN=testadmin" >> .env
+
+          # Add Factorio credentials if available (enables runtime game client download on host-1)
+          if [ -n "$FACTORIO_USERNAME" ] && [ -n "$FACTORIO_TOKEN" ]; then
+            echo "FACTORIO_USERNAME=$FACTORIO_USERNAME" >> .env
+            echo "FACTORIO_TOKEN=$FACTORIO_TOKEN" >> .env
+            echo "has_client=true" >> "$GITHUB_OUTPUT"
+            echo "Factorio credentials available — game client will be downloaded at runtime"
+          else
+            echo "has_client=false" >> "$GITHUB_OUTPUT"
+            echo "No Factorio credentials — skipping game client tests"
+          fi
 
           # Create database seed from examples
           cp seed-data/controller/database/users.example.json seed-data/controller/database/users.json
@@ -112,11 +124,14 @@ jobs:
           # Add a second instance on host-2 with auto_start disabled
           mkdir -p seed-data/hosts/clusterio-host-2/StoppedInstance
           echo '{"instance.auto_start": false}' > seed-data/hosts/clusterio-host-2/StoppedInstance/instance.json
+        env:
+          FACTORIO_USERNAME: ${{ secrets.FACTORIO_USERNAME }}
+          FACTORIO_TOKEN: ${{ secrets.FACTORIO_TOKEN }}
 
       - name: Build images
         run: |
-          # Skip game client — CI has no Factorio account credentials.
-          # The client requires authentication; headless does not.
+          # Skip game client at build time. If Factorio credentials are available
+          # as repository secrets, host-1 will download the client at runtime instead.
           echo 'INSTALL_FACTORIO_CLIENT=false' >> .env
           docker compose build
 
@@ -132,8 +147,9 @@ jobs:
 
       - name: Wait for hosts to be running
         run: |
-          timeout 120 bash -c 'until docker inspect --format="{{.State.Health.Status}}" clusterio-host-1 | grep -q healthy; do sleep 5; done'
-          timeout 120 bash -c 'until docker inspect --format="{{.State.Health.Status}}" clusterio-host-2 | grep -q healthy; do sleep 5; done'
+          # 180s allows time for optional runtime game client download (~450 MB)
+          timeout 180 bash -c 'until docker inspect --format="{{.State.Health.Status}}" clusterio-host-1 | grep -q healthy; do sleep 5; done'
+          timeout 180 bash -c 'until docker inspect --format="{{.State.Health.Status}}" clusterio-host-2 | grep -q healthy; do sleep 5; done'
 
       - name: Wait for seed completion
         run: |
@@ -163,6 +179,13 @@ jobs:
             && echo "PASS: Mod pre-cached on host-1" \
             || { echo "FAIL: Mod not pre-cached on host-1"; exit 1; }
 
+          echo "=== Verify mod added to default mod pack ==="
+          docker exec clusterio-controller npx clusterioctl \
+            --config /clusterio/tokens/config-control.json \
+            mod-pack show "Base Game 2.0" 2>/dev/null | grep -q "squeak-through-2" \
+            && echo "PASS: Mod 'squeak-through-2' in default mod pack" \
+            || { echo "FAIL: Mod not found in default mod pack"; exit 1; }
+
       - name: Verify instance seeding
         run: |
           INSTANCE_LIST=$(docker exec clusterio-controller npx clusterioctl \
@@ -186,6 +209,22 @@ jobs:
           echo "$INSTANCE_LIST" | grep "StoppedInstance" | grep -qi "stopped\|unassigned" \
             && echo "PASS: StoppedInstance is not running (auto_start=false)" \
             || { echo "FAIL: StoppedInstance should not be running"; exit 1; }
+
+      - name: Verify export-data
+        if: steps.setup.outputs.has_client == 'true'
+        run: |
+          echo "=== Stopping TestInstance for export-data ==="
+          docker exec clusterio-controller npx clusterioctl \
+            --config /clusterio/tokens/config-control.json \
+            instance stop TestInstance 2>/dev/null || true
+          sleep 5
+
+          echo "=== Running export-data on TestInstance (host-1 game client) ==="
+          timeout 120 docker exec clusterio-controller npx clusterioctl \
+            --config /clusterio/tokens/config-control.json \
+            instance export-data TestInstance \
+            && echo "PASS: export-data completed successfully" \
+            || { echo "FAIL: export-data failed"; exit 1; }
 
       - name: Verify idempotent restart
         run: |

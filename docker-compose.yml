@@ -22,21 +22,9 @@ x-host-base: &host-base
     context: .
     dockerfile: Dockerfile.host
     args:
-      FACTORIO_HEADLESS_TAG: ${FACTORIO_HEADLESS_TAG:-stable}
-      # FACTORIO_HEADLESS_SHA256: ${FACTORIO_HEADLESS_SHA256:-}
-      # CURL_RETRIES: ${CURL_RETRIES:-8}
-      # Optional: install the full Factorio game client for graphical asset export.
-      # When enabled, Clusterio's "export-data" flow can produce complete item
-      # spritesheets with icons. Requires a valid Factorio account.
-      #
-      # SECURITY: build args may appear in `docker history`. For production,
-      # use BuildKit secrets instead (see Dockerfile.host comments).
-      #
-      # INSTALL_FACTORIO_CLIENT: "true"
-      # FACTORIO_CLIENT_BUILD: "alpha"      # "alpha" = base game, "expansion" = Space Age
-      # FACTORIO_CLIENT_TAG: stable
-      # FACTORIO_CLIENT_USERNAME: "${FACTORIO_USERNAME}"
-      # FACTORIO_CLIENT_TOKEN: "${FACTORIO_TOKEN}"
+      FACTORIO_HEADLESS_TAG: stable
+      # FACTORIO_HEADLESS_SHA256:
+      # CURL_RETRIES: 8
   env_file:
     - .env
   networks:
@@ -87,13 +75,15 @@ services:
       context: .
       dockerfile: Dockerfile.host
       args:
-        FACTORIO_HEADLESS_TAG: ${FACTORIO_HEADLESS_TAG:-stable}
-        INSTALL_FACTORIO_CLIENT: ${INSTALL_FACTORIO_CLIENT:-true}
-        FACTORIO_CLIENT_BUILD: ${FACTORIO_CLIENT_BUILD:-expansion}
-        FACTORIO_CLIENT_TAG: ${FACTORIO_CLIENT_TAG:-stable}
+        # Full game client baked into image — enables Clusterio export-data.
+        # SECURITY: build args appear in `docker history`. For production,
+        # use runtime download (FACTORIO_USERNAME/TOKEN env vars) instead.
+        INSTALL_FACTORIO_CLIENT: "true"
+        FACTORIO_CLIENT_BUILD: expansion     # "alpha" = base game, "expansion" = Space Age
+        FACTORIO_CLIENT_TAG: stable
         FACTORIO_CLIENT_USERNAME: ${FACTORIO_USERNAME}
         FACTORIO_CLIENT_TOKEN: ${FACTORIO_TOKEN}
-        # FACTORIO_CLIENT_SHA256: ${FACTORIO_CLIENT_SHA256:-}
+        # FACTORIO_CLIENT_SHA256:
     container_name: clusterio-host-1
     hostname: clusterio-host-1
     environment:

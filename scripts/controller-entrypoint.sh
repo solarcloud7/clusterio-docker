@@ -150,10 +150,10 @@ if [ "$FIRST_RUN" = true ] || [ ! -f "$SEED_MARKER" ]; then
   touch "$SEED_MARKER"
   chown clusterio:clusterio "$SEED_MARKER"
   echo "Seeding complete."
+else
+  # Not first run — upload any new mods added since last run (existing mods are skipped)
+  /scripts/seed-mods.sh "$CONTROL_CONFIG" "$MOD_PACK_ID"
 fi
-
-# Upload any new mods added since last run (existing mods are skipped)
-/scripts/seed-mods.sh "$CONTROL_CONFIG" "$MOD_PACK_ID"
 
 # Keep controller running
 wait $CONTROLLER_PID

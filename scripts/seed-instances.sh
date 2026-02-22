@@ -198,6 +198,20 @@ seed_instance() {
   fi
 
   if [ "$auto_start" = "true" ]; then
+    # Export game data before starting if this is the first instance on this host.
+    # Succeeds only on hosts with the full game client installed — fails silently otherwise.
+    # This gives Clusterio icon/sprite data for the Web UI without manual intervention.
+    if [ "${_EXPORT_DONE[$host_id]:-}" != "true" ]; then
+      echo "      Attempting export-data (first instance on host $host_id)..."
+      if gosu clusterio npx clusterioctl --log-level error instance export-data "$instance_name" \
+          --config "$CONTROL_CONFIG" 2>/dev/null; then
+        echo "      Export-data complete."
+      else
+        echo "      Skipped export-data (host likely headless-only)"
+      fi
+      _EXPORT_DONE[$host_id]=true
+    fi
+
     echo "      Starting instance: $instance_name"
     gosu clusterio npx clusterioctl --log-level error instance start "$instance_name" \
       --config "$CONTROL_CONFIG" 2>/dev/null || true
@@ -210,6 +224,9 @@ seed_instance() {
 # Main
 # ---------------------------------------------------------------------------
 wait_for_hosts "$HOST_COUNT"
+
+# Track which hosts have had export-data attempted (one per host, first instance only)
+declare -A _EXPORT_DONE
 
 echo "Processing seed data..."
 for host_dir in "$SEED_DATA_DIR/hosts"/*/; do

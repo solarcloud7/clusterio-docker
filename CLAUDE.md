@@ -158,7 +158,7 @@ When the controller volume is wiped but host volumes persist, the controller gen
 | `FACTORIO_CLIENT_TAG` | No | `stable` | Factorio client version tag for runtime download |
 | `SKIP_CLIENT` | No | `false` | Set to `true` to force headless even when game client is available |
 
-### Build Arguments (set at `docker build` / `docker compose build` time)
+### Build Arguments (set per-service in `docker-compose.yml`, NOT in `.env`)
 | Argument | Default | Description |
 |----------|---------|-------------|
 | `FACTORIO_HEADLESS_TAG` | `stable` | Factorio headless version to download into the host image |
@@ -170,6 +170,8 @@ When the controller volume is wiped but host volumes persist, the controller gen
 | `FACTORIO_CLIENT_TOKEN` | — | Factorio.com token (required when `INSTALL_FACTORIO_CLIENT=true`) |
 | `FACTORIO_CLIENT_SHA256` | — | SHA256 checksum for game client archive (skips verification if empty) |
 | `CURL_RETRIES` | `8` | Number of curl retry attempts for Factorio downloads |
+
+Build args are set directly in the `build.args` section of each host service in `docker-compose.yml`. This keeps per-host build configuration (e.g., host-1 with game client, host-2 headless-only) separate and avoids polluting `.env` with build-time-only settings.
 
 ## Volume Mounts
 
