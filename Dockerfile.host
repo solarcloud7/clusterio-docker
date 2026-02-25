@@ -1,8 +1,17 @@
 # Clusterio Host - Standalone Installation
 # This container runs Clusterio host with Factorio headless server
 # Connects to a controller and runs game instances
+#
+# Build targets (via CLUSTERIO_TARGET build arg):
+#   release (default) — install from npm registry
+#   custom            — build from local source (clusterio/ directory)
 
-FROM node:24-bookworm-slim
+ARG CLUSTERIO_TARGET=release
+
+# ======================================================================
+# Base stage: OS dependencies, Factorio, and user setup (shared)
+# ======================================================================
+FROM node:24-bookworm-slim AS base
 
 # OCI Image Labels
 LABEL org.opencontainers.image.source="https://github.com/solarcloud7/clusterio-docker" \
@@ -102,7 +111,21 @@ RUN useradd -m -s /bin/bash clusterio && \
 
 WORKDIR /clusterio
 
-# Switch to clusterio user for npm install
+# ======================================================================
+# Builder stage: compile Clusterio from source (only runs for custom target)
+# ======================================================================
+FROM node:24-bookworm-slim AS clusterio-builder
+ENV CI=true
+RUN npm install -g pnpm
+WORKDIR /build
+COPY clusterio/ ./
+RUN pnpm install
+
+# ======================================================================
+# Release target: install from npm registry
+# ======================================================================
+FROM base AS release
+
 USER clusterio
 
 # Install Clusterio packages directly
@@ -116,11 +139,23 @@ RUN npm install --omit=dev \
     @clusterio/plugin-statistics_exporter \
     @clusterio/plugin-subspace_storage
 
-# Suppress the development warning banner
-COPY --chown=clusterio:clusterio scripts/suppress-dev-warning.js /tmp/suppress-dev-warning.js
-RUN node /tmp/suppress-dev-warning.js && rm /tmp/suppress-dev-warning.js
+# ======================================================================
+# Custom target: use locally-built Clusterio source
+# ======================================================================
+FROM base AS custom
 
-# Note: Host config is set at runtime in entrypoint to persist in volume
+# Copy built monorepo — pnpm hoists bins to node_modules/.bin/ so npx works
+COPY --from=clusterio-builder --chown=clusterio:clusterio /build/ /clusterio/
+
+# ======================================================================
+# Final stage: select target and add entrypoint
+# ======================================================================
+FROM ${CLUSTERIO_TARGET}
+
+# Suppress the development warning banner (works for both npm and monorepo layouts)
+COPY --chown=clusterio:clusterio scripts/suppress-dev-warning.js /tmp/suppress-dev-warning.js
+RUN node /tmp/suppress-dev-warning.js && rm /tmp/suppress-dev-warning.js \
+    && rm -f /clusterio/.npmrc
 
 # Switch back to root for entrypoint (gosu will drop to clusterio)
 USER root

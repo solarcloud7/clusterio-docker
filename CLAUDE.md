@@ -35,6 +35,7 @@ clusterio-docker/
 │   ├── mods/                      # Factorio mod .zip files
 │   └── external_plugins/          # External Clusterio plugins
 ├── tools/
+│   ├── deploy-cluster.ps1         # Hot-deploy source to running containers (~6s)
 │   └── get-admin-token.ps1        # Retrieve admin token from running controller
 ├── docs/
 │   └── seed-data.md               # Comprehensive seed data documentation
@@ -141,7 +142,7 @@ When the controller volume is wiped but host volumes persist, the controller gen
 | `CONTROLLER_HTTP_PORT` | No | `8080` | Web UI / API port |
 | `CONTROLLER_PUBLIC_ADDRESS` | No | — | Public URL for external access |
 | `HOST_COUNT` | No | `0` (standalone) / `2` (compose) | Host token count |
-| `DEFAULT_MOD_PACK` | No | `Base Game 2.0` | Mod pack name for instances (created if not found) |
+| `DEFAULT_MOD_PACK` | No | `Space Age 2.0` | Mod pack name for instances (created if not found; DLC auto-enabled if name contains "Space Age") |
 | `DEFAULT_FACTORIO_VERSION` | No | `2.0` | Factorio version for auto-created mod packs |
 | `FACTORIO_USERNAME` | No | — | Factorio.com username |
 | `FACTORIO_TOKEN` | No | — | Factorio.com token |
@@ -161,6 +162,7 @@ When the controller volume is wiped but host volumes persist, the controller gen
 ### Build Arguments (set per-service in `docker-compose.yml`, NOT in `.env`)
 | Argument | Default | Description |
 |----------|---------|-------------|
+| `CLUSTERIO_TARGET` | `release` | Build target: `release` (npm registry) or `custom` (local source in `clusterio/`) |
 | `FACTORIO_HEADLESS_TAG` | `stable` | Factorio headless version to download into the host image |
 | `FACTORIO_HEADLESS_SHA256` | — | SHA256 checksum for headless archive (skips verification if empty) |
 | `INSTALL_FACTORIO_CLIENT` | `false` | Install full game client alongside headless for graphical asset export |
@@ -172,6 +174,15 @@ When the controller volume is wiped but host volumes persist, the controller gen
 | `CURL_RETRIES` | `8` | Number of curl retry attempts for Factorio downloads |
 
 Build args are set directly in the `build.args` section of each host service in `docker-compose.yml`. This keeps per-host build configuration (e.g., host-1 with game client, host-2 headless-only) separate and avoids polluting `.env` with build-time-only settings.
+
+### Custom Clusterio Build (Fork)
+To use a Clusterio fork instead of the npm-published packages:
+1. Clone the fork: `git clone https://github.com/solarcloud7/clusterio clusterio/`
+2. Remove `clusterio/` from `.dockerignore`
+3. Uncomment `CLUSTERIO_TARGET: custom` in `docker-compose.yml` (in controller + all host services)
+4. Build: `docker compose build`
+
+The custom target uses a multi-stage build: a builder stage runs `pnpm install` (which compiles TypeScript + bundles the web UI), then the built monorepo is copied into the final image. pnpm hoists bins to `node_modules/.bin/` so all `npx clusterio*` commands work unchanged.
 
 ## Volume Mounts
 
@@ -228,6 +239,16 @@ docker logs clusterio-controller              # Controller logs
 docker logs -f clusterio-host-1               # Follow host-1 logs
 docker logs clusterio-controller | grep seed  # Check seeding status
 ```
+
+### Hot Deploy (Custom Fork)
+When using `CLUSTERIO_TARGET: custom` with a local fork, use the hot-deploy script to push code changes to running containers without rebuilding images (~6s per container):
+```powershell
+./tools/deploy-cluster.ps1                         # Build + deploy to all containers
+./tools/deploy-cluster.ps1 -Target controller      # Deploy to controller only
+./tools/deploy-cluster.ps1 -NoBuild                # Deploy previously compiled artifacts
+./tools/deploy-cluster.ps1 -NoBuild -NoRestart     # Deploy without restarting
+```
+The script compiles TypeScript locally via `pnpm install`, then copies `dist/` directories into containers via `docker cp`. Dependency changes (package.json) still require `docker compose build`.
 
 ## CI Pipeline
 
@@ -311,10 +332,10 @@ Set `"instance.auto_start": false` to prevent auto-starting after seeding.
 **Cause**: All hosts used the same default port range
 **Fix**: `host-entrypoint.sh` now auto-derives port range from HOST_ID: host N → `34N00-34N99`. Override with `FACTORIO_PORT_RANGE` env var if needed. Docker-compose port mappings must match (e.g., host 2 maps `34200-34209:34200-34209/udp`).
 
-### 7. DEFAULT_MOD_PACK Defaults to Base Game
-**Symptom**: Instances start without DLC mods (Space Age, etc.)
-**Cause**: `DEFAULT_MOD_PACK` env var defaults to `"Base Game 2.0"`
-**Fix**: Set `DEFAULT_MOD_PACK=Space Age 2.0` (or any custom name) in controller env. If the name doesn't match an existing pack, it's created automatically using `DEFAULT_FACTORIO_VERSION`. Requires volume wipe + redeploy (mod pack is set on first run only).
+### 7. DEFAULT_MOD_PACK and DLC Mods
+**Symptom**: Instances start without DLC mods (Space Age, etc.) or export-data is missing DLC assets
+**Cause**: `DEFAULT_MOD_PACK` was set to `"Base Game 2.0"` (no DLC)
+**Fix**: Set `DEFAULT_MOD_PACK=Space Age 2.0` in controller env. If the name contains "Space Age", the entrypoint automatically enables the `space-age`, `elevated-rails`, and `quality` builtin mods when creating the pack. If the name doesn't match an existing pack, it's created automatically using `DEFAULT_FACTORIO_VERSION`. Requires volume wipe + redeploy (mod pack is set on first run only).
 
 ### 8. INSTALL_FACTORIO_CLIENT Credentials Exposed in Image History
 **Symptom**: `docker history` reveals Factorio account credentials

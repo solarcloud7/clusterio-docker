@@ -25,6 +25,8 @@ x-host-base: &host-base
       FACTORIO_HEADLESS_TAG: stable
       # FACTORIO_HEADLESS_SHA256:
       # CURL_RETRIES: 8
+      # Custom Clusterio build from local source (clone fork to clusterio/):
+      CLUSTERIO_TARGET: custom
   env_file:
     - .env
   networks:
@@ -43,6 +45,8 @@ services:
       dockerfile: Dockerfile.controller
       args:
         CONTROLLER_HTTP_PORT: ${CONTROLLER_HTTP_PORT:-8080}
+        # Custom Clusterio build from local source (clone fork to clusterio/):
+        CLUSTERIO_TARGET: custom
     env_file:
       - .env
     container_name: clusterio-controller
@@ -86,6 +90,8 @@ services:
         # FACTORIO_CLIENT_USERNAME: ${FACTORIO_USERNAME}
         # FACTORIO_CLIENT_TOKEN: ${FACTORIO_TOKEN}
         # FACTORIO_CLIENT_SHA256:
+        # Custom Clusterio build from local source (clone fork to clusterio/):
+        CLUSTERIO_TARGET: custom
     container_name: clusterio-host-1
     hostname: clusterio-host-1
     environment:

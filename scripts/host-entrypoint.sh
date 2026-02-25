@@ -160,7 +160,7 @@ FACTORIO_PORT_RANGE="${FACTORIO_PORT_RANGE:-${DEFAULT_PORT_START}-${DEFAULT_PORT
 # Configure host with paths relative to data volume
 gosu clusterio npx clusteriohost --log-level error config set host.id "$HOST_ID" --config "$CONFIG_PATH"
 gosu clusterio npx clusteriohost --log-level error config set host.name "$HOST_NAME" --config "$CONFIG_PATH"
-gosu clusterio npx clusteriohost --log-level error config set host.controller_url "${CONTROLLER_URL:-http://clusterio-controller:8080/}" --config "$CONFIG_PATH"
+gosu clusterio npx clusteriohost --log-level error config set host.controller_url "${CONTROLLER_URL:-http://clusterio-controller:${CONTROLLER_HTTP_PORT:-8080}/}" --config "$CONFIG_PATH"
 gosu clusterio npx clusteriohost --log-level error config set host.controller_token "$TOKEN" --config "$CONFIG_PATH"
 gosu clusterio npx clusteriohost --log-level error config set host.factorio_directory "$FACTORIO_DIR" --config "$CONFIG_PATH"
 gosu clusterio npx clusteriohost --log-level error config set host.instances_directory "$DATA_DIR/instances" --config "$CONFIG_PATH"

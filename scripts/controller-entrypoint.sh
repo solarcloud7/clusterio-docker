@@ -12,6 +12,9 @@ SEED_DATA_DIR="/clusterio/seed-data"
 mkdir -p "$DATA_DIR" "$TOKENS_DIR"
 chown -R clusterio:clusterio "$DATA_DIR" "$TOKENS_DIR"
 
+# Clean up stale lock files from unclean shutdown (e.g. docker restart)
+rm -f "$DATA_DIR"/*.lock
+
 # Handle external plugins if mounted
 source /scripts/install-plugins.sh
 install_external_plugins "$EXTERNAL_PLUGINS_DIR"
@@ -125,6 +128,15 @@ if [ -z "$MOD_PACK_ID" ]; then
   MOD_PACK_ID=$(echo "$CREATE_OUTPUT" | grep -oE '\([0-9]+\)' | tr -d '()')
   if [ -z "$MOD_PACK_ID" ]; then
     echo "  WARNING: Failed to create mod pack '$DEFAULT_MOD_PACK'"
+  fi
+
+  # Enable DLC mods if the pack name contains "Space Age" (Clusterio creates
+  # builtin DLC mods as disabled by default — this enables them explicitly)
+  if [ -n "$MOD_PACK_ID" ] && echo "$DEFAULT_MOD_PACK" | grep -qi "space.age"; then
+    echo "  Enabling DLC mods (space-age, elevated-rails, quality)..."
+    gosu clusterio npx clusterioctl --log-level error mod-pack edit "$MOD_PACK_ID" \
+      --enable-mods space-age elevated-rails quality \
+      --config "$CONTROL_CONFIG" 2>/dev/null
   fi
 fi
 

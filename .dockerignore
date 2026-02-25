@@ -40,3 +40,6 @@ Thumbs.db
 # Temporary files
 *.tmp
 *.bak
+
+# Clusterio source (uncomment to exclude from build context when using release target)
+# clusterio/

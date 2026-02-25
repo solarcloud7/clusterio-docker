@@ -29,3 +29,6 @@ Thumbs.db
 
 # Temporary files
 *.tmp
+
+# Clusterio source (clone of fork for custom builds)
+#/clusterio/
