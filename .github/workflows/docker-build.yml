@@ -133,6 +133,8 @@ jobs:
           # Skip game client at build time. If Factorio credentials are available
           # as repository secrets, host-1 will download the client at runtime instead.
           echo 'INSTALL_FACTORIO_CLIENT=false' >> .env
+          # CI uses release target (npm registry) — custom target requires clusterio/ source
+          echo 'CLUSTERIO_TARGET=release' >> .env
           docker compose build
 
       - name: Create external volumes
@@ -182,7 +184,7 @@ jobs:
           echo "=== Verify mod added to default mod pack ==="
           docker exec clusterio-controller npx clusterioctl \
             --config /clusterio/tokens/config-control.json \
-            mod-pack show "Base Game 2.0" 2>/dev/null | grep -q "squeak-through-2" \
+            mod-pack show "Space Age 2.0" 2>/dev/null | grep -q "squeak-through-2" \
             && echo "PASS: Mod 'squeak-through-2' in default mod pack" \
             || { echo "FAIL: Mod not found in default mod pack"; exit 1; }
 
