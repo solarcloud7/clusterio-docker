@@ -13,6 +13,9 @@ seed-data/
 ├── mods/                              # Factorio mod .zip files (uploaded to controller)
 │   ├── my-mod_1.0.0.zip
 │   └── another-mod_2.1.0.zip
+├── external_plugins/                  # External Clusterio plugins (mounted read-write)
+│   └── my_plugin/
+│       └── package.json
 └── hosts/
     ├── clusterio-host-1/              # Must match hostname in docker-compose
     │   ├── Instance1/
@@ -121,14 +124,15 @@ docker exec clusterio-controller npx clusterioctl mod list
 
 ## Instance Seeding (Hosts)
 
-On **first run only** (when no `config-controller.json` exists):
+On **first run** (no `config-controller.json` exists) or if a previous first run was interrupted (`.seed-complete` marker missing):
 
-1. Controller scans `seed-data/hosts/` for directories
+1. The `seed-instances.sh` script scans `seed-data/hosts/` for directories
 2. Each host folder **must match** a hostname from docker-compose (e.g., `clusterio-host-1`)
 3. Instance folders under each host are created and automatically assigned to that host
 4. If an `instance.json` is present, its configuration is applied (server settings, plugins, etc.)
 5. Any `.zip` files are uploaded as saves to that instance
-6. Instances are **started automatically** by default (override with `instance.auto_start: false` in `instance.json`)
+6. If `EXPORT_HOST` is set and matches the host ID, `export-data` runs once before starting the first instance on that host (requires game client)
+7. Instances are **started automatically** by default (override with `instance.auto_start: false` in `instance.json`)
 
 ## Host Folder Naming
 
@@ -222,7 +226,7 @@ The following fields are **automatically skipped** during seeding because they a
 
 All other fields (server settings, plugin toggles, factorio version, etc.) are applied via the Clusterio API.
 
-> **Tip:** `instance.auto_start` is read to decide whether to start the instance after seeding, but is **not** set via the API — Clusterio's built-in auto-start handles restarts after the initial seed.
+> **Tip:** `instance.auto_start` is both applied to the instance config via the API and used to decide whether to start the instance after seeding. On subsequent restarts, Clusterio's built-in auto-start mechanism takes over.
 
 ## Usage
 
@@ -254,7 +258,8 @@ All other fields (server settings, plugin toggles, factorio version, etc.) are a
 
 ## Notes
 
-- Seeding only runs on **first startup** (clean volumes)
+- Instance/save seeding runs on **first startup** or if a previous first run was interrupted (`.seed-complete` marker missing)
+- Mod seeding runs on **every startup** — new mods added to `seed-data/mods/` are picked up without a volume wipe
 - Host folder names must match docker-compose hostnames exactly
 - Instance names come from folder names - use valid names
 - Save files must be valid Factorio `.zip` saves
