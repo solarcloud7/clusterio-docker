@@ -262,6 +262,30 @@ The GitHub Actions workflow (`.github/workflows/docker-build.yml`):
    - Instance seeding (create, save upload, auto-start control)
    - **Idempotent restart** (verifies no duplicate instances after `docker compose restart`)
 
+### Branch-Based Custom Builds
+
+Non-main branches automatically build from the Clusterio fork instead of npm packages:
+
+1. CI clones `https://github.com/solarcloud7/clusterio` at the **matching branch name**
+2. If the branch doesn't exist in the fork, it falls back to `main`
+3. Images are built with `CLUSTERIO_TARGET=custom` and pushed with the branch name as tag
+
+**Example**: Push to a `beta` branch in clusterio-docker → CI tries to clone `clusterio:beta`, falls back to `clusterio:main` → publishes `:beta` tagged images.
+
+**Workflow for testing a Clusterio PR branch**:
+```bash
+# In clusterio fork: push your feature branch (e.g., ExtendedExportData)
+# In clusterio-docker: create a branch with the same name
+git checkout -b ExtendedExportData
+git push  # → CI builds :ExtendedExportData images from the fork's branch
+
+# Consumer project uses the tagged images:
+#   image: ghcr.io/solarcloud7/clusterio-docker-controller:ExtendedExportData
+#   image: ghcr.io/solarcloud7/clusterio-docker-host:ExtendedExportData
+```
+
+Main branch and tags always use `CLUSTERIO_TARGET=release` (npm registry packages).
+
 ## Included Clusterio Plugins
 
 Both images install these official plugins:
