@@ -61,6 +61,7 @@ services:
     environment:
       - HOST_COUNT=${HOST_COUNT:-2}
       - EXPORT_HOST=${EXPORT_HOST:-1}
+      - DEFAULT_MOD_PACK=${DEFAULT_MOD_PACK:-Space Age 2.0}
     networks:
       - clusterio-net
     restart: unless-stopped
