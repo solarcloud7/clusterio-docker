@@ -31,4 +31,4 @@ Thumbs.db
 *.tmp
 
 # Clusterio source (clone of fork for custom builds)
-#/clusterio/
+/clusterio/

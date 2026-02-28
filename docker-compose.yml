@@ -60,6 +60,7 @@ services:
       # - ./plugins:/clusterio/external_plugins  # Uncomment for external plugins
     environment:
       - HOST_COUNT=${HOST_COUNT:-2}
+      - EXPORT_HOST=${EXPORT_HOST:-1}
     networks:
       - clusterio-net
     restart: unless-stopped

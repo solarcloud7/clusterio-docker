@@ -142,6 +142,7 @@ When the controller volume is wiped but host volumes persist, the controller gen
 | `CONTROLLER_HTTP_PORT` | No | `8080` | Web UI / API port |
 | `CONTROLLER_PUBLIC_ADDRESS` | No | — | Public URL for external access |
 | `HOST_COUNT` | No | `0` (standalone) / `2` (compose) | Host token count |
+| `EXPORT_HOST` | No | `1` (compose) | Host ID with game client for export-data. Set to `0` or empty to skip. |
 | `DEFAULT_MOD_PACK` | No | `Space Age 2.0` | Mod pack name for instances (created if not found; DLC auto-enabled if name contains "Space Age") |
 | `DEFAULT_FACTORIO_VERSION` | No | `2.0` | Factorio version for auto-created mod packs |
 | `FACTORIO_USERNAME` | No | — | Factorio.com username |

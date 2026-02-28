@@ -198,18 +198,20 @@ seed_instance() {
   fi
 
   if [ "$auto_start" = "true" ]; then
-    # Export game data before starting if this is the first instance on this host.
-    # Succeeds only on hosts with the full game client installed — fails silently otherwise.
-    # This gives Clusterio icon/sprite data for the Web UI without manual intervention.
-    if [ "${_EXPORT_DONE[$host_id]:-}" != "true" ]; then
-      echo "      Attempting export-data (first instance on host $host_id)..."
+    # Export game data before starting if this host is the designated export host.
+    # EXPORT_HOST env var specifies which host ID has the full game client.
+    # Set to 0 or empty to skip export entirely.
+    if [ -n "${EXPORT_HOST:-}" ] && [ "${EXPORT_HOST:-0}" != "0" ] \
+       && [ "$host_id" = "$EXPORT_HOST" ] \
+       && [ "${_EXPORT_DONE:-}" != "true" ]; then
+      echo "      Exporting game data (host $host_id is the designated export host)..."
       if gosu clusterio npx clusterioctl --log-level error instance export-data "$instance_name" \
           --config "$CONTROL_CONFIG" 2>/dev/null; then
         echo "      Export-data complete."
       else
-        echo "      Skipped export-data (host likely headless-only)"
+        echo "      Export-data failed (game client may not be installed on host $host_id)"
       fi
-      _EXPORT_DONE[$host_id]=true
+      _EXPORT_DONE=true
     fi
 
     echo "      Starting instance: $instance_name"
@@ -225,8 +227,8 @@ seed_instance() {
 # ---------------------------------------------------------------------------
 wait_for_hosts "$HOST_COUNT"
 
-# Track which hosts have had export-data attempted (one per host, first instance only)
-declare -A _EXPORT_DONE
+# Track whether export-data has been run (only once, on the designated EXPORT_HOST)
+_EXPORT_DONE=false
 
 echo "Processing seed data..."
 for host_dir in "$SEED_DATA_DIR/hosts"/*/; do

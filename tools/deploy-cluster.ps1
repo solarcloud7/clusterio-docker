@@ -109,7 +109,7 @@ Write-Host ""
 # 1. Verify CLUSTERIO_TARGET=custom in docker-compose.yml
 if (Test-Path $ComposeFile) {
     $composeContent = Get-Content $ComposeFile -Raw
-    if ($composeContent -notmatch 'CLUSTERIO_TARGET:\s*custom') {
+    if ($composeContent -notmatch 'CLUSTERIO_TARGET:\s*(custom|\$\{CLUSTERIO_TARGET:-custom\})') {
         Write-Fail "CLUSTERIO_TARGET is not set to 'custom' in docker-compose.yml"
         Write-Detail "This script only works with a custom Clusterio build (local fork)."
         Write-Detail "Set CLUSTERIO_TARGET: custom in docker-compose.yml first."

@@ -40,6 +40,56 @@
                 "reveal": "always",
                 "panel": "shared"
             }
+        },
+        {
+            "label": "Clusterio: Lint",
+            "type": "shell",
+            "command": "pnpm run lint",
+            "options": {
+                "cwd": "${workspaceFolder}/clusterio"
+            },
+            "group": "test",
+            "problemMatcher": "$eslint-stylish",
+            "presentation": {
+                "reveal": "always",
+                "panel": "shared"
+            }
+        },
+        {
+            "label": "Clusterio: Unit Tests",
+            "type": "shell",
+            "command": "pnpm run build && npx mocha --enable-source-maps --check-leaks -R spec --recursive test --exclude \"test/integration/**\" --exclude \"test/manual/**\" \"plugins/*/test/**\"",
+            "options": {
+                "cwd": "${workspaceFolder}/clusterio"
+            },
+            "group": "test",
+            "problemMatcher": [],
+            "presentation": {
+                "reveal": "always",
+                "panel": "shared"
+            }
+        },
+        {
+            "label": "Clusterio: Integration Tests",
+            "detail": "Requires Factorio headless installed at clusterio/factorio/",
+            "type": "shell",
+            "command": "pnpm run build && npx mocha --enable-source-maps --check-leaks -R spec --recursive test/integration --timeout 600000",
+            "options": {
+                "cwd": "${workspaceFolder}/clusterio"
+            },
+            "group": "test",
+            "problemMatcher": [],
+            "presentation": {
+                "reveal": "always",
+                "panel": "shared"
+            }
+        },
+        {
+            "label": "Clusterio: Lint + Unit Tests",
+            "dependsOn": ["Clusterio: Lint", "Clusterio: Unit Tests"],
+            "dependsOrder": "sequence",
+            "group": "test",
+            "problemMatcher": []
         }
     ]
 }
