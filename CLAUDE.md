@@ -371,3 +371,8 @@ Set `"instance.auto_start": false` to prevent auto-starting after seeding.
 **Symptom**: Host image is ~300-500 MB larger than expected
 **Cause**: `INSTALL_FACTORIO_CLIENT=true` downloads the full game client (~450 MB) in addition to the headless server (~100 MB)
 **Fix**: Only enable for hosts that need export-data functionality. The headless server is sufficient for running game instances — the client is only needed for Clusterio's graphical asset export.
+
+### 10. External Plugin Installs Duplicate @clusterio Packages
+**Symptom**: Plugin permissions "not found", events not firing, or other singleton-mismatch errors
+**Cause**: `npm install` in the plugin directory installs `@clusterio/lib` (and other peer deps) locally into the plugin's `node_modules/`. This creates two separate module instances — the plugin registers permissions/events in its copy while the controller reads from the monorepo copy.
+**Fix**: `install-plugins.sh` now removes `node_modules/@clusterio` after `npm install`, forcing Node.js to resolve upward to the shared monorepo copies. If you see this issue, ensure you're using the latest image.
