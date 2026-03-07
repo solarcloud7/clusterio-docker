@@ -116,7 +116,7 @@ WORKDIR /clusterio
 # ======================================================================
 FROM node:24-bookworm-slim AS clusterio-builder
 ENV CI=true
-RUN npm install -g pnpm
+RUN corepack enable
 WORKDIR /build
 COPY clusterio/ ./
 RUN pnpm install

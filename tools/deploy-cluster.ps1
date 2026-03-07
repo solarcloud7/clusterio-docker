@@ -262,6 +262,143 @@ else {
     Write-Detail "Restart manually:  docker compose restart $($containers -join ' ')"
 }
 
+# ─── Step 4: Stream Controller Logs ──────────────────────────────────
+if (-not $NoRestart) {
+    Write-Step "📋" "Streaming controller logs (waiting for startup)..."
+    Write-Host "  ────────────────────────────────────────────────" -ForegroundColor DarkGray
+
+    $logTimeout = 120
+    $logSw = [System.Diagnostics.Stopwatch]::StartNew()
+    Start-Sleep -Seconds 2
+
+    # Follow logs from the controller container
+    $ctrlName = $ctrlContainers | Select-Object -First 1
+    if ($ctrlName) {
+        $logJob = Start-Job -ArgumentList $ctrlName -ScriptBlock {
+            param($name)
+            docker logs -f --since 5s $name 2>&1
+        }
+
+        $initDone = $false
+        while ($true) {
+            $lines = Receive-Job $logJob -ErrorAction SilentlyContinue
+            foreach ($line in $lines) {
+                Write-Host "    $line" -ForegroundColor DarkGray
+                # "Started controller" = controller ready (always appears)
+                # "Seeding complete" = first-run seeding finished
+                if ($line -match "Started controller|Seeding complete") {
+                    $initDone = $true
+                }
+            }
+            if ($initDone) { break }
+            if ($logSw.Elapsed.TotalSeconds -ge $logTimeout) {
+                Write-Host "    (Log streaming timeout after ${logTimeout}s)" -ForegroundColor Yellow
+                break
+            }
+            Start-Sleep -Milliseconds 200
+        }
+        Stop-Job $logJob -ErrorAction SilentlyContinue
+        Remove-Job $logJob -ErrorAction SilentlyContinue
+    }
+
+    Write-Host "  ────────────────────────────────────────────────" -ForegroundColor DarkGray
+    if ($initDone) {
+        Write-Ok "Controller is up"
+    }
+}
+
+# ─── Step 5: Wait for Instances ──────────────────────────────────────
+if (-not $NoRestart) {
+    Write-Host ""
+    Write-Step "⏳" "Waiting for instances to start..."
+    Write-Host "  ────────────────────────────────────────────────" -ForegroundColor DarkGray
+
+    $instTimeout = 300
+    $instSw = [System.Diagnostics.Stopwatch]::StartNew()
+    $lastStates = @{}
+    $instancesDone = $false
+    $ctrlName = $ctrlContainers | Select-Object -First 1
+
+    while (-not $instancesDone -and $instSw.Elapsed.TotalSeconds -lt $instTimeout) {
+        Start-Sleep -Seconds 3
+
+        $listOut = docker exec $ctrlName sh -c 'npx clusterioctl --config /clusterio/tokens/config-control.json --log-level error instance list 2>/dev/null' 2>$null
+        if ($LASTEXITCODE -ne 0 -or -not $listOut) { continue }
+
+        $stateMap = @{}
+        foreach ($line in ($listOut -split "`n")) {
+            if ($line -match '(\S+-instance-\d+)\s.*\b(running|starting|stopped|stopping|creating_save|unassigned|unknown)\b') {
+                $stateMap[$Matches[1]] = $Matches[2]
+            }
+        }
+
+        foreach ($name in ($stateMap.Keys | Sort-Object)) {
+            $state = $stateMap[$name]
+            if ($lastStates[$name] -ne $state) {
+                $stateColor = switch ($state) {
+                    "running"       { "Green"  }
+                    "stopped"       { "Red"    }
+                    "creating_save" { "Cyan"   }
+                    default         { "Yellow" }
+                }
+                $elapsed = [int]$instSw.Elapsed.TotalSeconds
+                Write-Host "    [+${elapsed}s] $name -> $state" -ForegroundColor $stateColor
+                $lastStates[$name] = $state
+            }
+        }
+
+        # Done when we have instances and all are running
+        $nonRunning = @($stateMap.Values | Where-Object { $_ -ne "running" -and $_ -ne "stopped" })
+        if ($stateMap.Count -gt 0 -and $nonRunning.Count -eq 0) {
+            $instancesDone = $true
+        }
+    }
+
+    Write-Host "  ────────────────────────────────────────────────" -ForegroundColor DarkGray
+    if ($instancesDone) {
+        $elapsed = [int]$instSw.Elapsed.TotalSeconds
+        Write-Ok "All instances settled (+${elapsed}s)"
+    }
+    else {
+        Write-Host "    (Instance startup timeout after ${instTimeout}s)" -ForegroundColor Yellow
+    }
+}
+
+# ─── Step 6: Admin Token ─────────────────────────────────────────────
+if (-not $NoRestart) {
+    Write-Host ""
+    $ctrlName = $ctrlContainers | Select-Object -First 1
+    $tokenJson = docker exec $ctrlName cat /clusterio/tokens/config-control.json 2>$null
+    if ($LASTEXITCODE -eq 0 -and $tokenJson) {
+        try {
+            $tokenConfig = $tokenJson | ConvertFrom-Json
+            $adminToken = $tokenConfig.'control.controller_token'
+            if ($adminToken) {
+                Write-Step "🔑" "Admin Token:"
+                Write-Host "    $adminToken" -ForegroundColor White
+                try { $adminToken | Set-Clipboard; Write-Detail "(Copied to clipboard)" } catch {}
+            }
+        }
+        catch {
+            Write-Detail "Could not parse admin token from config"
+        }
+    }
+    else {
+        Write-Detail "Token not available yet — retrieve with: .\tools\get-admin-token.ps1"
+    }
+
+    # Show Web UI URL
+    $envFile = Join-Path $ProjectRoot ".env"
+    $httpPort = "8080"
+    if (Test-Path $envFile) {
+        Get-Content $envFile | ForEach-Object {
+            if ($_ -match "^CONTROLLER_HTTP_PORT=(\d+)") { $httpPort = $Matches[1] }
+        }
+    }
+    Write-Host ""
+    Write-Ok "Web UI: http://localhost:$httpPort"
+}
+
 # ─── Done ─────────────────────────────────────────────────────────────
 Write-Host ""
 Write-Ok "Deploy complete in $(Get-Elapsed)"
