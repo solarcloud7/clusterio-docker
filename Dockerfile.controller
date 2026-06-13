@@ -7,10 +7,22 @@
 
 ARG CLUSTERIO_TARGET=release
 
+# Clusterio version for the release target (npm registry packages).
+# Pinned for reproducible builds — bump deliberately on each Clusterio release.
+# Ignored by the custom target, which builds from the clusterio/ source instead.
+ARG CLUSTERIO_VERSION=2.0.0-alpha.25
+
+# Base image pinned by digest for reproducible builds. The tag is kept for
+# readability; the digest is what's actually resolved. Refresh both periodically
+# to pick up Debian/Node security patches:
+#   docker pull node:24-bookworm-slim && \
+#   docker image inspect node:24-bookworm-slim --format '{{index .RepoDigests 0}}'
+ARG NODE_IMAGE=node:24-bookworm-slim@sha256:bf22df20270b654c4e9da59d8d4a3516cce6ba2852e159b27288d645b7a7eedc
+
 # ======================================================================
 # Base stage: OS dependencies and user setup (shared by all targets)
 # ======================================================================
-FROM node:24-bookworm-slim AS base
+FROM ${NODE_IMAGE} AS base
 
 # OCI Image Labels
 LABEL org.opencontainers.image.source="https://github.com/solarcloud7/clusterio-docker" \
@@ -47,9 +59,9 @@ WORKDIR /clusterio
 # ======================================================================
 # Builder stage: compile Clusterio from source (only runs for custom target)
 # ======================================================================
-FROM node:24-bookworm-slim AS clusterio-builder
+FROM ${NODE_IMAGE} AS clusterio-builder
 ENV CI=true
-RUN npm install -g pnpm
+RUN corepack enable
 WORKDIR /build
 COPY clusterio/ ./
 RUN pnpm install
@@ -59,18 +71,21 @@ RUN pnpm install
 # ======================================================================
 FROM base AS release
 
+# Re-declare to bring the global ARG into this stage's scope
+ARG CLUSTERIO_VERSION=2.0.0-alpha.25
+
 USER clusterio
 
-# Install Clusterio controller package and plugins
+# Install Clusterio controller package and plugins, pinned to CLUSTERIO_VERSION
 RUN npm install --omit=dev \
-    @clusterio/controller \
-    @clusterio/ctl \
-    @clusterio/plugin-global_chat \
-    @clusterio/plugin-inventory_sync \
-    @clusterio/plugin-player_auth \
-    @clusterio/plugin-research_sync \
-    @clusterio/plugin-statistics_exporter \
-    @clusterio/plugin-subspace_storage
+    @clusterio/controller@${CLUSTERIO_VERSION} \
+    @clusterio/ctl@${CLUSTERIO_VERSION} \
+    @clusterio/plugin-global_chat@${CLUSTERIO_VERSION} \
+    @clusterio/plugin-inventory_sync@${CLUSTERIO_VERSION} \
+    @clusterio/plugin-player_auth@${CLUSTERIO_VERSION} \
+    @clusterio/plugin-research_sync@${CLUSTERIO_VERSION} \
+    @clusterio/plugin-statistics_exporter@${CLUSTERIO_VERSION} \
+    @clusterio/plugin-subspace_storage@${CLUSTERIO_VERSION}
 
 # ======================================================================
 # Custom target: use locally-built Clusterio source

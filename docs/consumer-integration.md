@@ -6,16 +6,24 @@ How to use clusterio-docker images in a downstream project.
 
 | Tag | Source | Use Case |
 |-----|--------|----------|
-| `latest` / `main` | npm registry (`@clusterio/*`) | Stable, published Clusterio |
-| `ExtendedExportData` | Fork branch `solarcloud7/clusterio:ExtendedExportData` | Custom builds with export-data enhancements |
+| `latest` / `main` | npm registry (`@clusterio/*`), pinned to **`2.0.0-alpha.25`** | Stable, published Clusterio |
+| `<branch>` | Fork branch `solarcloud7/clusterio:<branch>` (falls back to `main`) | Custom builds from a Clusterio fork branch |
 
 ```yaml
-# Example: use the custom branch images
-image: ghcr.io/solarcloud7/clusterio-docker-controller:ExtendedExportData
-image: ghcr.io/solarcloud7/clusterio-docker-host:ExtendedExportData
+# Example: pull the stable images
+image: ghcr.io/solarcloud7/clusterio-docker-controller:latest
+image: ghcr.io/solarcloud7/clusterio-docker-host:latest
 ```
 
 > **Note:** Image names include `-docker-` (derived from the repo name `clusterio-docker`).
+
+> **Export-data:** The extended per-category export spritesheets (recipes, signals,
+> technologies, planets, qualities, entities, static UI icons) are now **mainlined** in
+> Clusterio (alpha.23 [#838](https://github.com/clusterio/clusterio/pull/838)), so the
+> stable `latest` images already produce them — the old `ExtendedExportData` fork branch
+> is superseded. Note the web-UI consumption API changed in alpha.24
+> ([#875](https://github.com/clusterio/clusterio/pull/875): `useExportPrototypeMetadata`,
+> `FactorioIcon`); downstream UI code that read the old hooks must migrate.
 
 ## Compose Setup
 

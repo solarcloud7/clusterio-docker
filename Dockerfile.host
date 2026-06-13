@@ -8,10 +8,22 @@
 
 ARG CLUSTERIO_TARGET=release
 
+# Clusterio version for the release target (npm registry packages).
+# Pinned for reproducible builds — bump deliberately on each Clusterio release.
+# Ignored by the custom target, which builds from the clusterio/ source instead.
+ARG CLUSTERIO_VERSION=2.0.0-alpha.25
+
+# Base image pinned by digest for reproducible builds. The tag is kept for
+# readability; the digest is what's actually resolved. Refresh both periodically
+# to pick up Debian/Node security patches:
+#   docker pull node:24-bookworm-slim && \
+#   docker image inspect node:24-bookworm-slim --format '{{index .RepoDigests 0}}'
+ARG NODE_IMAGE=node:24-bookworm-slim@sha256:bf22df20270b654c4e9da59d8d4a3516cce6ba2852e159b27288d645b7a7eedc
+
 # ======================================================================
 # Base stage: OS dependencies, Factorio, and user setup (shared)
 # ======================================================================
-FROM node:24-bookworm-slim AS base
+FROM ${NODE_IMAGE} AS base
 
 # OCI Image Labels
 LABEL org.opencontainers.image.source="https://github.com/solarcloud7/clusterio-docker" \
@@ -46,6 +58,14 @@ ARG FACTORIO_CLIENT_TOKEN=""
 ARG FACTORIO_CLIENT_SHA256=""
 
 # Environment variables (can be overridden at runtime)
+#
+# FACTORIO_HOME is a *parent* directory containing versioned Factorio installs as
+# subdirectories (multi-version layout), NOT a direct install. This is what enables
+# Clusterio's runtime headless auto-download/update on Linux: the host only downloads
+# a newer target version when factorio_directory is non-direct (see packages/host
+# server.ts checkForUpdates — a direct install short-circuits with "must be manually
+# downloaded"). The baked headless below is extracted into a subdir of this parent so
+# the image still works offline while staying eligible for auto-update.
 ENV FACTORIO_HOME=/opt/factorio \
     FACTORIO_CLIENT_HOME=/opt/factorio-client \
     NODE_ENV=production \
@@ -75,7 +95,8 @@ RUN if [ "$INSTALL_FACTORIO_CLIENT" != "true" ]; then \
       else \
         echo "WARNING: No SHA256 provided for headless server — skipping verification"; \
       fi && \
-      tar -xJf "$archive" -C /opt && \
+      mkdir -p /opt/factorio && \
+      tar -xJf "$archive" -C /opt/factorio && \
       rm "$archive"; \
     else \
       echo "Skipping headless server download (game client will be installed instead)"; \
@@ -103,7 +124,11 @@ RUN if [ "$INSTALL_FACTORIO_CLIENT" = "true" ]; then \
       echo "Factorio game client installed to /opt/factorio-client"; \
     fi
 
-# Create clusterio user and directory
+# Create clusterio user and directory.
+# Own the /opt/factorio *parent* (not -R) so the clusterio user can create new
+# versioned subdirs there when Clusterio auto-downloads a newer headless at runtime.
+# The baked install subdir stays root-owned and world-readable — read-only at runtime,
+# so re-owning the whole tree would only add a needless copy-up layer to the image.
 RUN useradd -m -s /bin/bash clusterio && \
     mkdir -p /clusterio && \
     chown clusterio:clusterio /clusterio /opt/factorio && \
@@ -114,9 +139,9 @@ WORKDIR /clusterio
 # ======================================================================
 # Builder stage: compile Clusterio from source (only runs for custom target)
 # ======================================================================
-FROM node:24-bookworm-slim AS clusterio-builder
+FROM ${NODE_IMAGE} AS clusterio-builder
 ENV CI=true
-RUN npm install -g pnpm
+RUN corepack enable
 WORKDIR /build
 COPY clusterio/ ./
 RUN pnpm install
@@ -126,18 +151,21 @@ RUN pnpm install
 # ======================================================================
 FROM base AS release
 
+# Re-declare to bring the global ARG into this stage's scope
+ARG CLUSTERIO_VERSION=2.0.0-alpha.25
+
 USER clusterio
 
-# Install Clusterio packages directly
+# Install Clusterio packages directly, pinned to CLUSTERIO_VERSION
 RUN npm install --omit=dev \
-    @clusterio/host \
-    @clusterio/ctl \
-    @clusterio/plugin-global_chat \
-    @clusterio/plugin-inventory_sync \
-    @clusterio/plugin-player_auth \
-    @clusterio/plugin-research_sync \
-    @clusterio/plugin-statistics_exporter \
-    @clusterio/plugin-subspace_storage
+    @clusterio/host@${CLUSTERIO_VERSION} \
+    @clusterio/ctl@${CLUSTERIO_VERSION} \
+    @clusterio/plugin-global_chat@${CLUSTERIO_VERSION} \
+    @clusterio/plugin-inventory_sync@${CLUSTERIO_VERSION} \
+    @clusterio/plugin-player_auth@${CLUSTERIO_VERSION} \
+    @clusterio/plugin-research_sync@${CLUSTERIO_VERSION} \
+    @clusterio/plugin-statistics_exporter@${CLUSTERIO_VERSION} \
+    @clusterio/plugin-subspace_storage@${CLUSTERIO_VERSION}
 
 # ======================================================================
 # Custom target: use locally-built Clusterio source

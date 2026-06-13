@@ -1,8 +1,14 @@
-# Git
+# Git (root and nested, e.g. clusterio/.git — never needed in the image,
+# and clusterio/.git carries the full fork history into custom-target builds)
 .git
+**/.git
 .gitignore
 .gitattributes
 .github
+
+# Dependency dirs — the custom builder runs `pnpm install` to regenerate these,
+# so shipping a local copy only bloats the build context.
+**/node_modules
 
 # IDE / Editor
 .vscode

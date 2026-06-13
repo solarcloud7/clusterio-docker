@@ -23,21 +23,23 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Clone Clusterio fork (non-main branches)
-        if: github.ref != 'refs/heads/main' && !startsWith(github.ref, 'refs/tags/')
+      - name: Clone Clusterio fork (non-main branch pushes)
+        if: github.event_name == 'push' && github.ref != 'refs/heads/main' && !startsWith(github.ref, 'refs/tags/')
+        env:
+          REF_NAME: ${{ github.ref_name }}
         run: |
-          echo "Cloning Clusterio fork branch: ${{ github.ref_name }}"
-          git clone --depth 1 -b ${{ github.ref_name }} \
+          echo "Cloning Clusterio fork branch: $REF_NAME"
+          git clone --depth 1 -b "$REF_NAME" \
             https://github.com/solarcloud7/clusterio clusterio/ 2>/dev/null \
           || {
-            echo "Branch '${{ github.ref_name }}' not found in fork, falling back to main"
-            git clone --depth 1 -b main \
+            echo "Branch '$REF_NAME' not found in fork, falling back to the fork's default branch"
+            git clone --depth 1 \
               https://github.com/solarcloud7/clusterio clusterio/
           }
           echo "CLUSTERIO_TARGET=custom" >> "$GITHUB_ENV"
 
-      - name: Set Clusterio target (main branch)
-        if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/')
+      - name: Set Clusterio target (release — PRs, main, and tags)
+        if: github.event_name == 'pull_request' || github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/')
         run: echo "CLUSTERIO_TARGET=release" >> "$GITHUB_ENV"
 
       - name: Set up Docker Buildx
@@ -51,6 +53,10 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Resolve Clusterio version for release image tag
+        id: clusterio_version
+        run: echo "version=$(sed -nE 's/^ARG CLUSTERIO_VERSION=([^[:space:]]+).*/\1/p' Dockerfile.host | head -1)" >> "$GITHUB_OUTPUT"
+
       - name: Extract metadata for Controller
         id: meta-controller
         uses: docker/metadata-action@v5
@@ -62,6 +68,7 @@ jobs:
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
             type=raw,value=latest,enable={{is_default_branch}}
+            type=raw,value=${{ steps.clusterio_version.outputs.version }},enable={{is_default_branch}}
           labels: |
             org.opencontainers.image.title=Clusterio Controller
             org.opencontainers.image.description=Clusterio cluster controller with web UI and API
@@ -77,6 +84,7 @@ jobs:
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
             type=raw,value=latest,enable={{is_default_branch}}
+            type=raw,value=${{ steps.clusterio_version.outputs.version }},enable={{is_default_branch}}
           labels: |
             org.opencontainers.image.title=Clusterio Host
             org.opencontainers.image.description=Clusterio host with Factorio headless server
@@ -147,12 +155,14 @@ jobs:
           FACTORIO_USERNAME: ${{ secrets.FACTORIO_USERNAME }}
           FACTORIO_TOKEN: ${{ secrets.FACTORIO_TOKEN }}
 
-      - name: Clone Clusterio fork (non-main branches)
-        if: github.ref != 'refs/heads/main' && !startsWith(github.ref, 'refs/tags/')
+      - name: Clone Clusterio fork (non-main branch pushes)
+        if: github.event_name == 'push' && github.ref != 'refs/heads/main' && !startsWith(github.ref, 'refs/tags/')
+        env:
+          REF_NAME: ${{ github.ref_name }}
         run: |
-          git clone --depth 1 -b ${{ github.ref_name }} \
+          git clone --depth 1 -b "$REF_NAME" \
             https://github.com/solarcloud7/clusterio clusterio/ 2>/dev/null \
-          || git clone --depth 1 -b main \
+          || git clone --depth 1 \
             https://github.com/solarcloud7/clusterio clusterio/
 
       - name: Build images

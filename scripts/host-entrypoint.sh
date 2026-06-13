@@ -1,6 +1,6 @@
 #!/bin/bash
 # host-entrypoint.sh
-set -e
+set -eo pipefail
 
 DATA_DIR="/clusterio/data"
 CONFIG_PATH="$DATA_DIR/config-host.json"
@@ -62,9 +62,11 @@ if ! client_in_image && ! client_in_volume \
   FACTORIO_CLIENT_TAG="${FACTORIO_CLIENT_TAG:-stable}"
   echo "Downloading Factorio game client (build=${FACTORIO_CLIENT_BUILD}, tag=${FACTORIO_CLIENT_TAG})..."
   archive="/tmp/factorio-client.tar.xz"
-  curl -fL --retry 8 \
-    "https://factorio.com/get-download/${FACTORIO_CLIENT_TAG}/${FACTORIO_CLIENT_BUILD}/linux64?username=${FACTORIO_USERNAME}&token=${FACTORIO_TOKEN}" \
-    -o "$archive"
+  # Pass the credentialed URL via curl's config on stdin (-K -) so the Factorio
+  # token does not appear in the process list / proc args during the download.
+  curl -fL --retry 8 -o "$archive" -K - <<EOF
+url = "https://factorio.com/get-download/${FACTORIO_CLIENT_TAG}/${FACTORIO_CLIENT_BUILD}/linux64?username=${FACTORIO_USERNAME}&token=${FACTORIO_TOKEN}"
+EOF
   mkdir -p "$FACTORIO_CLIENT_VOLUME_DIR"
   tar -xJf "$archive" -C "$FACTORIO_CLIENT_VOLUME_DIR" --strip-components=1
   rm "$archive"
@@ -80,7 +82,11 @@ elif client_in_image && [ "${SKIP_CLIENT:-false}" != "true" ]; then
     FACTORIO_DIR="$FACTORIO_CLIENT_HOME"
     echo "Factorio game client (image) detected — using $FACTORIO_DIR"
 else
+    # Headless host: FACTORIO_HOME is a multi-version parent dir (baked install lives in
+    # a subdir). Pointing factorio_directory here — rather than at a direct install — lets
+    # Clusterio auto-download/update the target headless version at runtime on Linux.
     FACTORIO_DIR="$FACTORIO_HOME"
+    echo "No game client present — using headless directory $FACTORIO_DIR (auto-update enabled)"
 fi
 
 get_token() {
