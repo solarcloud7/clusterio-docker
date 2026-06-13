@@ -53,6 +53,10 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Resolve Clusterio version for release image tag
+        id: clusterio_version
+        run: echo "version=$(sed -nE 's/^ARG CLUSTERIO_VERSION=([^[:space:]]+).*/\1/p' Dockerfile.host | head -1)" >> "$GITHUB_OUTPUT"
+
       - name: Extract metadata for Controller
         id: meta-controller
         uses: docker/metadata-action@v5
@@ -64,6 +68,7 @@ jobs:
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
             type=raw,value=latest,enable={{is_default_branch}}
+            type=raw,value=${{ steps.clusterio_version.outputs.version }},enable={{is_default_branch}}
           labels: |
             org.opencontainers.image.title=Clusterio Controller
             org.opencontainers.image.description=Clusterio cluster controller with web UI and API
@@ -79,6 +84,7 @@ jobs:
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
             type=raw,value=latest,enable={{is_default_branch}}
+            type=raw,value=${{ steps.clusterio_version.outputs.version }},enable={{is_default_branch}}
           labels: |
             org.opencontainers.image.title=Clusterio Host
             org.opencontainers.image.description=Clusterio host with Factorio headless server
