@@ -7,7 +7,7 @@ How to use clusterio-docker images in a downstream project.
 | Tag | Source | Use Case |
 |-----|--------|----------|
 | `latest` / `main` | npm registry (`@clusterio/*`), pinned to **`2.0.0-alpha.25`** | Stable, published Clusterio |
-| `<branch>` | Fork branch `solarcloud7/clusterio:<branch>` (falls back to `main`) | Custom builds from a Clusterio fork branch |
+| `<branch>` | Built from fork branch `solarcloud7/clusterio:<branch>` on a **non-main branch push** (falls back to the fork's default branch, `master`). PRs, `main`, and tags build the `release` target. | Custom builds from a Clusterio fork branch |
 
 ```yaml
 # Example: pull the stable images
@@ -30,7 +30,7 @@ image: ghcr.io/solarcloud7/clusterio-docker-host:latest
 ```yaml
 services:
   clusterio-controller:
-    image: ghcr.io/solarcloud7/clusterio-docker-controller:ExtendedExportData
+    image: ghcr.io/solarcloud7/clusterio-docker-controller:latest
     hostname: clusterio-controller          # MUST stay as-is (hosts connect to this)
     ports:
       - "8080:8080"
@@ -47,7 +47,7 @@ services:
       - DEFAULT_MOD_PACK=Space Age 2.0
 
   clusterio-host-1:
-    image: ghcr.io/solarcloud7/clusterio-docker-host:ExtendedExportData
+    image: ghcr.io/solarcloud7/clusterio-docker-host:latest
     hostname: clusterio-host-1              # MUST follow clusterio-host-N pattern
     depends_on:
       clusterio-controller:

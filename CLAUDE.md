@@ -40,6 +40,7 @@ clusterio-docker/
 │   ├── deploy-cluster.ps1         # Hot-deploy source to running containers (~6s)
 │   └── get-admin-token.ps1        # Retrieve admin token from running controller
 ├── docs/
+│   ├── consumer-integration.md    # Downstream consumer integration guide
 │   └── seed-data.md               # Comprehensive seed data documentation
 └── .github/workflows/
     └── docker-build.yml           # CI: build, push to GHCR, integration tests
@@ -147,7 +148,7 @@ When the controller volume is wiped but host volumes persist, the controller gen
 | `CONTROLLER_PUBLIC_ADDRESS` | No | — | Public URL for external access |
 | `HOST_COUNT` | No | `0` (standalone) / `2` (compose) | Host token count |
 | `EXPORT_HOST` | No | `1` (compose) | Host ID with game client for export-data. Set to `0` or empty to skip. |
-| `DEFAULT_MOD_PACK` | No | `Space Age 2.0` | Mod pack name for instances (created if not found; DLC auto-enabled if name contains "Space Age") |
+| `DEFAULT_MOD_PACK` | No | `Base Game 2.0` (standalone) / `Space Age 2.0` (compose) | Mod pack name for instances (created if not found; DLC auto-enabled if name contains "Space Age") |
 | `DEFAULT_FACTORIO_VERSION` | No | `2.0` | Factorio version for auto-created mod packs |
 | `FACTORIO_USERNAME` | No | — | Factorio.com username |
 | `FACTORIO_TOKEN` | No | — | Factorio.com token |
@@ -169,6 +170,7 @@ When the controller volume is wiped but host volumes persist, the controller gen
 |----------|---------|-------------|
 | `CLUSTERIO_TARGET` | `release` | Build target: `release` (npm registry) or `custom` (local source in `clusterio/`) |
 | `CLUSTERIO_VERSION` | `2.0.0-alpha.25` | Pinned Clusterio version for the `release` target. All `@clusterio/*` packages install at this exact version. Ignored by the `custom` target. Bump to upgrade. |
+| `NODE_IMAGE` | `node:24-bookworm-slim@sha256:…` | Base Node image, pinned by digest for reproducible builds. Refresh periodically for Debian/Node security patches (see comment in the Dockerfiles). |
 | `FACTORIO_HEADLESS_TAG` | `stable` | Factorio headless version baked into the host image (seed/offline copy) |
 | `FACTORIO_HEADLESS_SHA256` | — | SHA256 checksum for headless archive (skips verification if empty) |
 | `INSTALL_FACTORIO_CLIENT` | `false` | Install full game client alongside headless for graphical asset export |
@@ -260,7 +262,7 @@ The script compiles TypeScript locally via `pnpm install`, then copies `dist/` d
 
 The GitHub Actions workflow (`.github/workflows/docker-build.yml`):
 1. Builds both images with Docker Buildx + GHA cache
-2. Pushes to GHCR on non-PR events (tagged: latest, semver, branch)
+2. Pushes to GHCR on non-PR events (tagged: latest, the Clusterio version, semver, branch)
 3. Runs integration tests:
    - Database seeding (admin user)
    - Mod seeding (upload + host pre-cache)
@@ -292,17 +294,17 @@ Non-main branch **pushes** automatically build from the Clusterio fork instead o
 
 **Workflow for testing a Clusterio PR branch**:
 ```bash
-# In clusterio fork: push your feature branch (e.g., ExtendedExportData)
-# In clusterio-docker: create a branch with the same name
-git checkout -b ExtendedExportData
-git push  # → CI builds :ExtendedExportData images from the fork's branch
+# In clusterio fork: push your feature branch (e.g., my-feature)
+# In clusterio-docker: push a branch with the same name
+git checkout -b my-feature
+git push  # → CI builds :my-feature images from the fork's branch
 
 # Consumer project uses the tagged images:
-#   image: ghcr.io/solarcloud7/clusterio-docker-controller:ExtendedExportData
-#   image: ghcr.io/solarcloud7/clusterio-docker-host:ExtendedExportData
+#   image: ghcr.io/solarcloud7/clusterio-docker-controller:my-feature
+#   image: ghcr.io/solarcloud7/clusterio-docker-host:my-feature
 ```
 
-Main branch and tags always use `CLUSTERIO_TARGET=release` (npm registry packages).
+Main branch, tags, and pull requests use `CLUSTERIO_TARGET=release` (npm registry packages); only non-main branch pushes build `custom`.
 
 ## Included Clusterio Plugins
 
