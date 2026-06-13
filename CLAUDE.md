@@ -13,6 +13,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with th
 
 **Note**: GHCR image names include `-docker-` because the CI derives them from the repository name (`clusterio-docker`).
 
+**Clusterio version**: `release` builds are pinned to **`2.0.0-alpha.25`** via the `CLUSTERIO_VERSION` build arg (see Build Arguments). Bump that one value to upgrade. `custom`/non-main branch builds compile from the bundled `clusterio/` source instead.
+
 ## Repository Structure
 
 ```
@@ -80,6 +82,8 @@ clusterio-docker/
 4. Runtime client download (if FACTORIO_USERNAME + FACTORIO_TOKEN set, no client yet, SKIP_CLIENT!=true)
    └── Download once → stored in external volume (/opt/factorio-client), persists across restarts
 5. Select Factorio directory: volume client → image client → headless
+   - The **headless** path (`/opt/factorio`) is a **multi-version parent directory** — the baked install lives in a subdir. This non-direct layout lets Clusterio auto-download/update the target headless version at runtime on Linux. The **client** paths are direct installs (no auto-update; pinned to the baked/downloaded client).
+   - Runtime-downloaded headless versions land in `/opt/factorio` on the **image layer** (a cache), so they survive `restart` but are re-downloaded after `down`/recreate. Mount a volume at `/opt/factorio` if you want downloaded versions to persist.
 6. Already configured? (config-host.json exists with valid token)
    ├── YES:
    │   a. Token desync check: compare stored token vs shared volume token
@@ -164,7 +168,8 @@ When the controller volume is wiped but host volumes persist, the controller gen
 | Argument | Default | Description |
 |----------|---------|-------------|
 | `CLUSTERIO_TARGET` | `release` | Build target: `release` (npm registry) or `custom` (local source in `clusterio/`) |
-| `FACTORIO_HEADLESS_TAG` | `stable` | Factorio headless version to download into the host image |
+| `CLUSTERIO_VERSION` | `2.0.0-alpha.25` | Pinned Clusterio version for the `release` target. All `@clusterio/*` packages install at this exact version. Ignored by the `custom` target. Bump to upgrade. |
+| `FACTORIO_HEADLESS_TAG` | `stable` | Factorio headless version baked into the host image (seed/offline copy) |
 | `FACTORIO_HEADLESS_SHA256` | — | SHA256 checksum for headless archive (skips verification if empty) |
 | `INSTALL_FACTORIO_CLIENT` | `false` | Install full game client alongside headless for graphical asset export |
 | `FACTORIO_CLIENT_BUILD` | `expansion` | Client variant: `alpha` (base game) or `expansion` (Space Age) |
@@ -376,3 +381,8 @@ Set `"instance.auto_start": false` to prevent auto-starting after seeding.
 **Symptom**: Plugin permissions "not found", events not firing, or other singleton-mismatch errors
 **Cause**: `npm install` in the plugin directory installs `@clusterio/lib` (and other peer deps) locally into the plugin's `node_modules/`. This creates two separate module instances — the plugin registers permissions/events in its copy while the controller reads from the monorepo copy.
 **Fix**: `install-plugins.sh` now removes `node_modules/@clusterio` after `npm install`, forcing Node.js to resolve upward to the shared monorepo copies. If you see this issue, ensure you're using the latest image.
+
+### 11. Headless Factorio Directory Must Be a Multi-Version Parent
+**Symptom**: Host logs "A newer version of factorio is available (X) but must be manually downloaded"; headless never auto-updates and isn't driven by the mod pack's Factorio version
+**Cause**: `host.factorio_directory` points at a **direct** install (a dir with `data/` + version file). Clusterio's runtime auto-download (`checkForUpdates`) short-circuits on direct installs.
+**Fix**: The host image bakes headless into a **subdirectory** of `/opt/factorio` (a non-direct, multi-version parent), and the entrypoint sets `host.factorio_directory=/opt/factorio`. Keep this layout — extracting headless directly into `/opt/factorio` would re-disable auto-update. (The game **client** path for export hosts is intentionally a direct install and does not auto-update.)

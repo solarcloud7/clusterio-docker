@@ -80,7 +80,11 @@ elif client_in_image && [ "${SKIP_CLIENT:-false}" != "true" ]; then
     FACTORIO_DIR="$FACTORIO_CLIENT_HOME"
     echo "Factorio game client (image) detected — using $FACTORIO_DIR"
 else
+    # Headless host: FACTORIO_HOME is a multi-version parent dir (baked install lives in
+    # a subdir). Pointing factorio_directory here — rather than at a direct install — lets
+    # Clusterio auto-download/update the target headless version at runtime on Linux.
     FACTORIO_DIR="$FACTORIO_HOME"
+    echo "No game client present — using headless directory $FACTORIO_DIR (auto-update enabled)"
 fi
 
 get_token() {
