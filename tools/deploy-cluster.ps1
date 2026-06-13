@@ -327,7 +327,10 @@ if (-not $NoRestart) {
 
         $stateMap = @{}
         foreach ($line in ($listOut -split "`n")) {
-            if ($line -match '(\S+-instance-\d+)\s.*\b(running|starting|stopped|stopping|creating_save|unassigned|unknown)\b') {
+            # Match any instance row: first table column is the name, then find
+            # the status keyword anywhere on the line. Name-agnostic so it works
+            # for arbitrary instance names (not just "*-instance-N").
+            if ($line -match '^\s*([^|]+?)\s*\|.*\b(running|starting|stopped|stopping|creating_save|unassigned|unknown)\b') {
                 $stateMap[$Matches[1]] = $Matches[2]
             }
         }

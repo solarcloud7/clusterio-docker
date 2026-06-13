@@ -14,7 +14,7 @@
 #
 # Reads from: /clusterio/seed-data/mods/*.zip
 
-set -e
+set -eo pipefail
 
 CONTROL_CONFIG="$1"
 MOD_PACK_ID="$2"

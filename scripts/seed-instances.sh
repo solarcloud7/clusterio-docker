@@ -14,7 +14,7 @@
 # are environment-specific (IDs, tokens, assigned host) are automatically
 # skipped. All other fields are applied via `clusterioctl instance config set`.
 
-set -e
+set -eo pipefail
 
 CONTROL_CONFIG="$1"
 HOST_COUNT="${2:-0}"
@@ -107,20 +107,16 @@ apply_instance_config() {
       continue
     fi
 
-    # Extract the value — handle objects (factorio.settings) specially
-    # Use python/node to properly extract JSON values
-    value=$(gosu clusterio node -e "
-      const fs = require('fs');
-      const cfg = JSON.parse(fs.readFileSync('$config_file', 'utf8'));
-      const val = cfg['$field'];
-      if (val === null || val === undefined) {
-        process.stdout.write('');
-      } else if (typeof val === 'object') {
-        process.stdout.write(JSON.stringify(val));
-      } else {
-        process.stdout.write(String(val));
-      }
-    " 2>/dev/null) || continue
+    # Extract the value — handle objects (factorio.settings) specially.
+    # Pass the file path and key as argv (NOT interpolated into the script body)
+    # so apostrophes or special chars in a path/field can't break or inject.
+    value=$(gosu clusterio node -e '
+      const [, file, key] = process.argv;
+      const val = JSON.parse(require("fs").readFileSync(file, "utf8"))[key];
+      if (val === null || val === undefined) process.stdout.write("");
+      else if (typeof val === "object") process.stdout.write(JSON.stringify(val));
+      else process.stdout.write(String(val));
+    ' "$config_file" "$field" 2>/dev/null) || continue
 
     if [ -z "$value" ]; then
       continue
@@ -188,10 +184,10 @@ seed_instance() {
   local auto_start=true
   if [ -f "${instance_dir}instance.json" ]; then
     local parsed
-    parsed=$(gosu clusterio node -e "
-      const cfg = JSON.parse(require('fs').readFileSync('${instance_dir}instance.json', 'utf8'));
-      process.stdout.write(String(cfg['instance.auto_start'] ?? true));
-    " 2>/dev/null) || true
+    parsed=$(gosu clusterio node -e '
+      const cfg = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8"));
+      process.stdout.write(String(cfg["instance.auto_start"] ?? true));
+    ' "${instance_dir}instance.json" 2>/dev/null) || true
     if [ "$parsed" = "false" ]; then
       auto_start=false
     fi

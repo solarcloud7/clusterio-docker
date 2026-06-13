@@ -12,10 +12,17 @@ ARG CLUSTERIO_TARGET=release
 # Ignored by the custom target, which builds from the clusterio/ source instead.
 ARG CLUSTERIO_VERSION=2.0.0-alpha.25
 
+# Base image pinned by digest for reproducible builds. The tag is kept for
+# readability; the digest is what's actually resolved. Refresh both periodically
+# to pick up Debian/Node security patches:
+#   docker pull node:24-bookworm-slim && \
+#   docker image inspect node:24-bookworm-slim --format '{{index .RepoDigests 0}}'
+ARG NODE_IMAGE=node:24-bookworm-slim@sha256:bf22df20270b654c4e9da59d8d4a3516cce6ba2852e159b27288d645b7a7eedc
+
 # ======================================================================
 # Base stage: OS dependencies and user setup (shared by all targets)
 # ======================================================================
-FROM node:24-bookworm-slim AS base
+FROM ${NODE_IMAGE} AS base
 
 # OCI Image Labels
 LABEL org.opencontainers.image.source="https://github.com/solarcloud7/clusterio-docker" \
@@ -52,7 +59,7 @@ WORKDIR /clusterio
 # ======================================================================
 # Builder stage: compile Clusterio from source (only runs for custom target)
 # ======================================================================
-FROM node:24-bookworm-slim AS clusterio-builder
+FROM ${NODE_IMAGE} AS clusterio-builder
 ENV CI=true
 RUN corepack enable
 WORKDIR /build

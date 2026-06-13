@@ -1,6 +1,6 @@
 #!/bin/bash
 # controller-entrypoint.sh
-set -e
+set -eo pipefail
 
 DATA_DIR="/clusterio/data"
 CONFIG_PATH="$DATA_DIR/config-controller.json"
@@ -12,8 +12,14 @@ SEED_DATA_DIR="/clusterio/seed-data"
 mkdir -p "$DATA_DIR" "$TOKENS_DIR"
 chown -R clusterio:clusterio "$DATA_DIR" "$TOKENS_DIR"
 
-# Clean up stale lock files from unclean shutdown (e.g. docker restart)
-rm -f "$DATA_DIR"/*.lock
+# Clean up stale lock files from an unclean shutdown (e.g. docker restart).
+# Assumes a single controller per data volume (the supported topology); only
+# removes (and logs) when a lock is actually present. Clusterio's own lock files
+# (#815) are what guard against two controllers concurrently sharing a volume.
+if compgen -G "$DATA_DIR/*.lock" > /dev/null 2>&1; then
+  echo "Removing stale controller lock file(s) from a previous run"
+  rm -f "$DATA_DIR"/*.lock
+fi
 
 # Handle external plugins if mounted
 source /scripts/install-plugins.sh
@@ -77,7 +83,14 @@ if [ ! -f "$CONFIG_PATH" ]; then
   CONTROL_CONFIG="$TOKENS_DIR/config-control.json"
   echo "Generating control config for API access..."
   gosu clusterio npx clusteriocontroller --log-level error bootstrap create-ctl-config "$INIT_CLUSTERIO_ADMIN" --config "$CONFIG_PATH"
-  mv /clusterio/config-control.json "$CONTROL_CONFIG"
+  # create-ctl-config writes config-control.json to the working directory.
+  # Fail with a clear message rather than a cryptic `mv` error if it's absent.
+  if [ -f /clusterio/config-control.json ]; then
+    mv /clusterio/config-control.json "$CONTROL_CONFIG"
+  else
+    echo "ERROR: create-ctl-config did not produce /clusterio/config-control.json — cannot provision API token" >&2
+    exit 1
+  fi
   
   # Generate host tokens if HOST_COUNT is set (default: 0 for standalone usage)
   HOST_COUNT=${HOST_COUNT:-0}
@@ -115,17 +128,20 @@ DEFAULT_MOD_PACK="${DEFAULT_MOD_PACK:-Base Game 2.0}"
 DEFAULT_FACTORIO_VERSION="${DEFAULT_FACTORIO_VERSION:-2.0}"
 MOD_PACK_ID=$(gosu clusterio npx clusterioctl --log-level error mod-pack list \
   --config "$CONTROL_CONFIG" 2>/dev/null \
-  | grep "$DEFAULT_MOD_PACK" | awk -F'|' '{print $1}' | tr -d ' ')
+  | grep "$DEFAULT_MOD_PACK" | awk -F'|' '{print $1}' | tr -d ' ' || true)
 
-# If the requested mod pack doesn't exist, create it
-if [ -z "$MOD_PACK_ID" ]; then
+# If the requested mod pack doesn't exist, create it — but only during the
+# seeding window (first run, or seeding not yet complete). This prevents a
+# transient `mod-pack list` failure on a later boot (which leaves MOD_PACK_ID
+# empty) from creating a duplicate pack.
+if [ -z "$MOD_PACK_ID" ] && { [ "$FIRST_RUN" = true ] || [ ! -f "$SEED_MARKER" ]; }; then
   echo "Mod pack '$DEFAULT_MOD_PACK' not found — creating it (Factorio $DEFAULT_FACTORIO_VERSION)..."
   CREATE_OUTPUT=$(gosu clusterio npx clusterioctl --log-level error mod-pack create \
     "$DEFAULT_MOD_PACK" "$DEFAULT_FACTORIO_VERSION" \
     --config "$CONTROL_CONFIG" 2>/dev/null)
   echo "  $CREATE_OUTPUT"
   # Parse ID from output: "Created mod pack <name> (<id>)"
-  MOD_PACK_ID=$(echo "$CREATE_OUTPUT" | grep -oE '\([0-9]+\)' | tr -d '()')
+  MOD_PACK_ID=$(echo "$CREATE_OUTPUT" | grep -oE '\([0-9]+\)' | tr -d '()' || true)
   if [ -z "$MOD_PACK_ID" ]; then
     echo "  WARNING: Failed to create mod pack '$DEFAULT_MOD_PACK'"
   fi
