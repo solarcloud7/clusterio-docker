@@ -269,13 +269,13 @@ The GitHub Actions workflow (`.github/workflows/docker-build.yml`):
 
 ### Branch-Based Custom Builds
 
-Non-main branches automatically build from the Clusterio fork instead of npm packages:
+Non-main branch **pushes** automatically build from the Clusterio fork instead of npm packages (pull requests, `main`, and tags build the `release` target so CI validates exactly what gets published):
 
 1. CI clones `https://github.com/solarcloud7/clusterio` at the **matching branch name**
-2. If the branch doesn't exist in the fork, it falls back to `main`
+2. If the branch doesn't exist in the fork, it falls back to the fork's **default branch** (`master`)
 3. Images are built with `CLUSTERIO_TARGET=custom` and pushed with the branch name as tag
 
-**Example**: Push to a `beta` branch in clusterio-docker → CI tries to clone `clusterio:beta`, falls back to `clusterio:main` → publishes `:beta` tagged images.
+**Example**: Push to a `beta` branch in clusterio-docker → CI tries to clone `clusterio:beta`, falls back to `clusterio:master` → publishes `:beta` tagged images.
 
 **Workflow for testing a Clusterio PR branch**:
 ```bash
