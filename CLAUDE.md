@@ -267,6 +267,19 @@ The GitHub Actions workflow (`.github/workflows/docker-build.yml`):
    - Instance seeding (create, save upload, auto-start control)
    - **Idempotent restart** (verifies no duplicate instances after `docker compose restart`)
 
+### Release Process
+
+Release builds use `CLUSTERIO_TARGET=release` (npm packages), pinned to `CLUSTERIO_VERSION`.
+
+1. **Bump the version** — set `ARG CLUSTERIO_VERSION` to the new Clusterio version in **both** `Dockerfile.controller` and `Dockerfile.host` (e.g. `2.0.0-alpha.26`). This single value pins the `@clusterio/*` npm packages **and** the published image tag. Update the version references in this file and `docs/consumer-integration.md` to match.
+2. **Open a PR → merge to `main`.** On a PR, CI builds the `release` target and runs the full integration suite (seeding, instance start, idempotent restart) — exactly what will publish. Merge once green.
+3. **Publish is automatic on the `main` push.** Both images publish to GHCR tagged `:latest` **and** `:<CLUSTERIO_VERSION>` (e.g. `:2.0.0-alpha.25`). The version tag is read from the `CLUSTERIO_VERSION` build arg, so it always matches what's installed.
+4. **Make packages public (one-time).** GHCR packages default to private. To allow public `docker pull`: GitHub → profile → Packages → each package (`clusterio-docker-controller`, `clusterio-docker-host`) → Package settings → Change visibility → Public.
+
+**Optional git tags:** pushing a `v*` git tag also publishes via `type=semver`. Use the full prerelease form (`v2.0.0-alpha.25`) so the short `:2.0` / `:2.0.0` tags are correctly skipped while in alpha — a bare `v2.0.0` would mint misleading stable-looking tags.
+
+**Note:** the Clusterio (npm) version is independent of the Factorio version baked into the host image (`FACTORIO_HEADLESS_TAG`).
+
 ### Branch-Based Custom Builds
 
 Non-main branch **pushes** automatically build from the Clusterio fork instead of npm packages (pull requests, `main`, and tags build the `release` target so CI validates exactly what gets published):
