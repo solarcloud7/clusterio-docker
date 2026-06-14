@@ -36,6 +36,8 @@ docker pull ghcr.io/solarcloud7/clusterio-docker-controller:latest
 docker pull ghcr.io/solarcloud7/clusterio-docker-host:latest
 ```
 
+Images are also tagged with the bundled Clusterio version (e.g. `:2.0.0-alpha.25`) so you can pin a specific release.
+
 > **Note**: Image names include `-docker-` because CI derives them from the repository name (`clusterio-docker`).
 
 ## Quick Start
@@ -163,7 +165,7 @@ docker run -d -p 34100-34199:34100-34199/udp \
 | `CONTROLLER_HTTP_PORT` | `8080` | Web UI / API port |
 | `CONTROLLER_PUBLIC_ADDRESS` | *(unset)* | Public URL for external access (standalone usage) |
 | `HOST_COUNT` | `0` (standalone) / `2` (compose) | Number of host tokens to generate |
-| `DEFAULT_MOD_PACK` | `Base Game 2.0` | Default mod pack for new instances (first run only). Created automatically if not found. |
+| `DEFAULT_MOD_PACK` | `Base Game 2.0` (standalone) / `Space Age 2.0` (compose) | Default mod pack for new instances (first run only). Created automatically if not found. |
 | `DEFAULT_FACTORIO_VERSION` | `2.0` | Factorio version used when creating a new mod pack (only applies when `DEFAULT_MOD_PACK` doesn't match an existing pack) |
 | `FACTORIO_USERNAME` | *(unset)* | Factorio account username (for mod portal & multiplayer) |
 | `FACTORIO_TOKEN` | *(unset)* | Factorio account token from [factorio.com/profile](https://factorio.com/profile) |
@@ -188,6 +190,9 @@ These are set at build time via `docker compose build` or `--build-arg`. In dock
 
 | Variable | Default | Description |
 |----------|---------|-------------|
+| `CLUSTERIO_TARGET` | `release` | `release` (npm packages) or `custom` (build from the bundled `clusterio/` source) |
+| `CLUSTERIO_VERSION` | `2.0.0-alpha.25` | Pinned Clusterio version for the `release` target — all `@clusterio/*` packages install at this version. Ignored by `custom`. |
+| `NODE_IMAGE` | `node:24-bookworm-slim@sha256:…` | Base Node image, pinned by digest for reproducible builds |
 | `FACTORIO_HEADLESS_TAG` | `stable` | Factorio headless server version tag |
 | `FACTORIO_HEADLESS_SHA256` | *(unset)* | SHA256 checksum for headless archive (skips verification if empty) |
 | `INSTALL_FACTORIO_CLIENT` | `false` | Install full game client for graphical asset export (host only) |
