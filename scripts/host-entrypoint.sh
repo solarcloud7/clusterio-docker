@@ -89,6 +89,27 @@ else
     echo "No game client present — using headless directory $FACTORIO_DIR (auto-update enabled)"
 fi
 
+# Diagnostic: report which Factorio version(s) are present in the resolved directory. Clusterio
+# resolves the Factorio binary by version, so a mismatch between what is installed here and an
+# instance's pinned `factorio.version` is a common — and otherwise hard to diagnose — cause of
+# an instance failing to start: the host throws "Unable to find Factorio version X" (or
+# downloads X) before the server launches, and that lands in this host log, not the instance's
+# factorio-current.log. Logging the installed version here makes the mismatch visible up front.
+report_factorio_versions() {
+    local dir="$1" changelog version found=""
+    for changelog in "$dir/data/changelog.txt" "$dir"/*/data/changelog.txt; do
+        [ -f "$changelog" ] || continue
+        # Best-effort: a changelog with no `Version:` line (or a partially-written file) makes
+        # grep -m1 exit 1, which pipefail propagates and `set -e` would turn into an entrypoint
+        # abort. This is diagnostic-only, so never let it fail startup — fall back to empty and let
+        # the `[ -n ]` check below skip it.
+        version=$(grep -m1 -iE '^Version:' "$changelog" 2>/dev/null | sed -E 's/^[Vv]ersion:[[:space:]]*//') || true
+        [ -n "$version" ] && found="${found:+$found, }$version"
+    done
+    echo "Factorio install(s) under $dir: ${found:-none (will be downloaded at runtime)}"
+}
+report_factorio_versions "$FACTORIO_DIR"
+
 get_token() {
     # Priority 1: Environment variable (for standalone container usage)
     if [ -n "$CLUSTERIO_HOST_TOKEN" ]; then
