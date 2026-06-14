@@ -33,6 +33,12 @@ LABEL org.opencontainers.image.source="https://github.com/solarcloud7/clusterio-
       org.opencontainers.image.vendor="solarcloud7"
 
 # Build arguments for host configuration
+# Factorio headless: by DEFAULT the image does NOT bundle Factorio — Wube's EULA
+# forbids redistributing the server, and Clusterio downloads the mod-pack's target
+# headless version at runtime into the multi-version /opt/factorio dir anyway.
+# Set BAKE_FACTORIO_HEADLESS=true ONLY for private/offline images you do not
+# redistribute. FACTORIO_HEADLESS_TAG / _SHA256 apply only when baking.
+ARG BAKE_FACTORIO_HEADLESS=false
 ARG FACTORIO_HEADLESS_TAG=stable
 ARG FACTORIO_HEADLESS_SHA256=""
 ARG CURL_RETRIES=8
@@ -59,13 +65,14 @@ ARG FACTORIO_CLIENT_SHA256=""
 
 # Environment variables (can be overridden at runtime)
 #
-# FACTORIO_HOME is a *parent* directory containing versioned Factorio installs as
-# subdirectories (multi-version layout), NOT a direct install. This is what enables
-# Clusterio's runtime headless auto-download/update on Linux: the host only downloads
-# a newer target version when factorio_directory is non-direct (see packages/host
-# server.ts checkForUpdates — a direct install short-circuits with "must be manually
-# downloaded"). The baked headless below is extracted into a subdir of this parent so
-# the image still works offline while staying eligible for auto-update.
+# FACTORIO_HOME is a *parent* directory holding versioned Factorio installs as
+# subdirectories (multi-version layout), NOT a direct install. By default it starts
+# empty and Clusterio downloads the mod-pack's target headless version at runtime
+# (Linux only): a non-direct factorio_directory is what makes checkForUpdates fetch
+# it — a direct install short-circuits with "must be manually downloaded" (see
+# packages/host server.ts checkForUpdates). An optional baked headless
+# (BAKE_FACTORIO_HEADLESS=true) is extracted into a subdir of this parent so
+# private/offline images keep working while staying eligible for auto-update.
 ENV FACTORIO_HOME=/opt/factorio \
     FACTORIO_CLIENT_HOME=/opt/factorio-client \
     NODE_ENV=production \
@@ -84,8 +91,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Use bash with strict error handling (errexit + pipefail)
 SHELL ["/bin/bash", "-eo", "pipefail", "-c"]
 
-# Download and install Factorio headless server (skipped when game client is installed)
-RUN if [ "$INSTALL_FACTORIO_CLIENT" != "true" ]; then \
+# Factorio headless is baked ONLY when BAKE_FACTORIO_HEADLESS=true (private/offline
+# images). The default public image ships NO Factorio — Clusterio downloads the
+# target version at runtime into /opt/factorio. The game client
+# (INSTALL_FACTORIO_CLIENT) supersedes a baked headless when enabled.
+RUN if [ "$BAKE_FACTORIO_HEADLESS" = "true" ] && [ "$INSTALL_FACTORIO_CLIENT" != "true" ]; then \
+      echo "Baking Factorio headless (${FACTORIO_HEADLESS_TAG}) into the image..." && \
       archive="/tmp/factorio.tar.xz" && \
       curl -fL --retry "$CURL_RETRIES" \
         "https://factorio.com/get-download/${FACTORIO_HEADLESS_TAG}/headless/linux64" \
@@ -99,7 +110,7 @@ RUN if [ "$INSTALL_FACTORIO_CLIENT" != "true" ]; then \
       tar -xJf "$archive" -C /opt/factorio && \
       rm "$archive"; \
     else \
-      echo "Skipping headless server download (game client will be installed instead)"; \
+      echo "Not baking Factorio headless — Clusterio downloads it at runtime"; \
       mkdir -p /opt/factorio; \
     fi
 

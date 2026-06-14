@@ -40,6 +40,8 @@ Images are also tagged with the bundled Clusterio version (e.g. `:2.0.0-alpha.25
 
 > **Note**: Image names include `-docker-` because CI derives them from the repository name (`clusterio-docker`).
 
+> **Factorio licensing**: these images do **not** bundle Factorio. The host downloads the Factorio headless server from official channels ([factorio.com](https://factorio.com)) at runtime — Wube's [Terms of Service](https://factorio.com/terms-of-service) do not permit redistributing the server. You are responsible for complying with Factorio's terms.
+
 ## Quick Start
 
 ### Using Docker Compose (Recommended)
@@ -193,8 +195,9 @@ These are set at build time via `docker compose build` or `--build-arg`. In dock
 | `CLUSTERIO_TARGET` | `release` | `release` (npm packages) or `custom` (build from the bundled `clusterio/` source) |
 | `CLUSTERIO_VERSION` | `2.0.0-alpha.25` | Pinned Clusterio version for the `release` target — all `@clusterio/*` packages install at this version. Ignored by `custom`. |
 | `NODE_IMAGE` | `node:24-bookworm-slim@sha256:…` | Base Node image, pinned by digest for reproducible builds |
-| `FACTORIO_HEADLESS_TAG` | `stable` | Factorio headless server version tag |
-| `FACTORIO_HEADLESS_SHA256` | *(unset)* | SHA256 checksum for headless archive (skips verification if empty) |
+| `BAKE_FACTORIO_HEADLESS` | `false` | Bake Factorio headless into the image. **Default `false`** — images ship no Factorio (Wube's EULA forbids redistributing it); Clusterio downloads it at runtime. Set `true` only for private/offline images. |
+| `FACTORIO_HEADLESS_TAG` | `stable` | Factorio headless version to bake (only used when `BAKE_FACTORIO_HEADLESS=true`) |
+| `FACTORIO_HEADLESS_SHA256` | *(unset)* | SHA256 checksum for the baked headless archive (bake-only; skips verification if empty) |
 | `INSTALL_FACTORIO_CLIENT` | `false` | Install full game client for graphical asset export (host only) |
 | `FACTORIO_CLIENT_BUILD` | `expansion` | Client variant: `alpha` (base game) or `expansion` (Space Age) |
 | `FACTORIO_CLIENT_TAG` | `stable` | Factorio client version tag |

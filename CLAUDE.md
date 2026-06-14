@@ -83,7 +83,7 @@ clusterio-docker/
 4. Runtime client download (if FACTORIO_USERNAME + FACTORIO_TOKEN set, no client yet, SKIP_CLIENT!=true)
    └── Download once → stored in external volume (/opt/factorio-client), persists across restarts
 5. Select Factorio directory: volume client → image client → headless
-   - The **headless** path (`/opt/factorio`) is a **multi-version parent directory** — the baked install lives in a subdir. This non-direct layout lets Clusterio auto-download/update the target headless version at runtime on Linux. The **client** paths are direct installs (no auto-update; pinned to the baked/downloaded client).
+   - The **headless** path (`/opt/factorio`) is a **multi-version parent directory**, **empty by default** — Clusterio downloads the mod-pack's target headless version at runtime on Linux (Wube's EULA forbids bundling it). A non-direct layout is what enables that; `BAKE_FACTORIO_HEADLESS=true` pre-bakes a version in a subdir for private/offline images. The **client** paths are direct installs (no auto-update; pinned to the baked/downloaded client).
    - Runtime-downloaded headless versions land in `/opt/factorio` on the **image layer** (a cache), so they survive `restart` but are re-downloaded after `down`/recreate. Mount a volume at `/opt/factorio` if you want downloaded versions to persist.
 6. Already configured? (config-host.json exists with valid token)
    ├── YES:
@@ -171,8 +171,9 @@ When the controller volume is wiped but host volumes persist, the controller gen
 | `CLUSTERIO_TARGET` | `release` | Build target: `release` (npm registry) or `custom` (local source in `clusterio/`) |
 | `CLUSTERIO_VERSION` | `2.0.0-alpha.25` | Pinned Clusterio version for the `release` target. All `@clusterio/*` packages install at this exact version. Ignored by the `custom` target. Bump to upgrade. |
 | `NODE_IMAGE` | `node:24-bookworm-slim@sha256:…` | Base Node image, pinned by digest for reproducible builds. Refresh periodically for Debian/Node security patches (see comment in the Dockerfiles). |
-| `FACTORIO_HEADLESS_TAG` | `stable` | Factorio headless version baked into the host image (seed/offline copy) |
-| `FACTORIO_HEADLESS_SHA256` | — | SHA256 checksum for headless archive (skips verification if empty) |
+| `BAKE_FACTORIO_HEADLESS` | `false` | Bake the Factorio headless server into the image. **Default `false`** — the public image ships no Factorio (Wube's EULA forbids redistributing it) and Clusterio downloads the target version at runtime. Set `true` only for private/offline images you don't redistribute. |
+| `FACTORIO_HEADLESS_TAG` | `stable` | Factorio headless version to bake — **only used when `BAKE_FACTORIO_HEADLESS=true`** |
+| `FACTORIO_HEADLESS_SHA256` | — | SHA256 checksum for the baked headless archive (bake-only; skips verification if empty) |
 | `INSTALL_FACTORIO_CLIENT` | `false` | Install full game client alongside headless for graphical asset export |
 | `FACTORIO_CLIENT_BUILD` | `expansion` | Client variant: `alpha` (base game) or `expansion` (Space Age) |
 | `FACTORIO_CLIENT_TAG` | `stable` | Factorio client version tag (same format as headless) |
@@ -278,9 +279,19 @@ Release builds use `CLUSTERIO_TARGET=release` (npm packages), pinned to `CLUSTER
 3. **Publish is automatic on the `main` push.** Both images publish to GHCR tagged `:latest` **and** `:<CLUSTERIO_VERSION>` (e.g. `:2.0.0-alpha.25`). The version tag is read from the `CLUSTERIO_VERSION` build arg, so it always matches what's installed.
 4. **Make packages public (one-time).** GHCR packages default to private. To allow public `docker pull`: GitHub → profile → Packages → each package (`clusterio-docker-controller`, `clusterio-docker-host`) → Package settings → Change visibility → Public.
 
-**Optional git tags:** pushing a `v*` git tag also publishes via `type=semver`. Use the full prerelease form (`v2.0.0-alpha.25`) so the short `:2.0` / `:2.0.0` tags are correctly skipped while in alpha — a bare `v2.0.0` would mint misleading stable-looking tags.
+### Versioning (this repo's own version)
 
-**Note:** the Clusterio (npm) version is independent of the Factorio version baked into the host image (`FACTORIO_HEADLESS_TAG`).
+clusterio-docker has its **own** SemVer (git tags `vMAJOR.MINOR.PATCH`), independent of Clusterio's alpha version. It is currently at **`v1.1.0`**; the alpha.25 upgrade and the EULA-compliant runtime Factorio download are unreleased on `main` and warrant the next tag — a **major** bump, since dropping the bundled Factorio changes image behavior. Pushing a `v*` tag publishes via `type=semver`, so each release carries **both** axes:
+
+- `:2.0.0`, `:2.0`, `:2` — this repo's version (from the git tag)
+- `:2.0.0-alpha.25` — the bundled Clusterio version (from the `CLUSTERIO_VERSION` build arg)
+- `:latest` — newest `main`
+
+Bump rules: **major** = breaking image usage (env/volume/behavior), **minor** = new capability or a Clusterio bump, **patch** = fixes/docs.
+
+> Heads-up: a repo major of `v2.0.0` mints a `:2.0.0` tag that resembles Clusterio/Factorio 2.0 (distinct from `:2.0.0-alpha.25`). If that's confusing, a minor (`v1.2.0`) avoids it.
+
+**Note:** the Clusterio (npm) version is independent of the Factorio version Clusterio downloads at runtime (or, when baking, `FACTORIO_HEADLESS_TAG`).
 
 ### Branch-Based Custom Builds
 
@@ -398,6 +409,6 @@ Set `"instance.auto_start": false` to prevent auto-starting after seeding.
 **Fix**: `install-plugins.sh` now removes `node_modules/@clusterio` after `npm install`, forcing Node.js to resolve upward to the shared monorepo copies. If you see this issue, ensure you're using the latest image.
 
 ### 11. Headless Factorio Directory Must Be a Multi-Version Parent
-**Symptom**: Host logs "A newer version of factorio is available (X) but must be manually downloaded"; headless never auto-updates and isn't driven by the mod pack's Factorio version
-**Cause**: `host.factorio_directory` points at a **direct** install (a dir with `data/` + version file). Clusterio's runtime auto-download (`checkForUpdates`) short-circuits on direct installs.
-**Fix**: The host image bakes headless into a **subdirectory** of `/opt/factorio` (a non-direct, multi-version parent), and the entrypoint sets `host.factorio_directory=/opt/factorio`. Keep this layout — extracting headless directly into `/opt/factorio` would re-disable auto-update. (The game **client** path for export hosts is intentionally a direct install and does not auto-update.)
+**Symptom**: Host logs "A newer version of factorio is available (X) but must be manually downloaded"; headless never downloads/updates and isn't driven by the mod pack's Factorio version
+**Cause**: `host.factorio_directory` points at a **direct** install (a dir with `data/` + version file). Clusterio's runtime download (`checkForUpdates`) short-circuits on direct installs.
+**Fix**: `host.factorio_directory` must be a **non-direct, multi-version parent**. The entrypoint sets it to `/opt/factorio` — empty by default, so Clusterio downloads the target version into a versioned subdir at runtime. An optional baked headless (`BAKE_FACTORIO_HEADLESS=true`) goes into a **subdirectory** of `/opt/factorio`, never directly into it (that would re-disable runtime download). (The game **client** path for export hosts is intentionally a direct install and does not auto-update.)
