@@ -99,7 +99,11 @@ report_factorio_versions() {
     local dir="$1" changelog version found=""
     for changelog in "$dir/data/changelog.txt" "$dir"/*/data/changelog.txt; do
         [ -f "$changelog" ] || continue
-        version=$(grep -m1 -iE '^Version:' "$changelog" 2>/dev/null | sed -E 's/^[Vv]ersion:[[:space:]]*//')
+        # Best-effort: a changelog with no `Version:` line (or a partially-written file) makes
+        # grep -m1 exit 1, which pipefail propagates and `set -e` would turn into an entrypoint
+        # abort. This is diagnostic-only, so never let it fail startup — fall back to empty and let
+        # the `[ -n ]` check below skip it.
+        version=$(grep -m1 -iE '^Version:' "$changelog" 2>/dev/null | sed -E 's/^[Vv]ersion:[[:space:]]*//') || true
         [ -n "$version" ] && found="${found:+$found, }$version"
     done
     echo "Factorio install(s) under $dir: ${found:-none (will be downloaded at runtime)}"
