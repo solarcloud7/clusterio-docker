@@ -19,7 +19,14 @@ install_external_plugins() {
       local plugin_name
       plugin_name=$(basename "$plugin")
       echo "  Installing plugin: $plugin_name"
-      (cd "$plugin" && gosu clusterio npm install --omit=dev 2>/dev/null || true)
+      # Surface install/build failures instead of swallowing them. This used to be
+      # `... 2>/dev/null || true`, which hid npm and `prepare`/webpack errors entirely — a plugin
+      # could ship a broken or stale bundle while the container still reported healthy (issue #5).
+      # Keep going on failure so one bad plugin doesn't block the others, but emit a clear,
+      # greppable warning so the failure is discoverable in `docker logs`.
+      if ! (cd "$plugin" && gosu clusterio npm install --omit=dev); then
+        echo "  WARNING: plugin '$plugin_name' failed to install/build — its bundle may be broken or stale"
+      fi
 
       # Remove any @clusterio packages that npm may have installed locally.
       # Plugins declare @clusterio/* as peerDependencies, but npm v7+ can
