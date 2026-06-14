@@ -25,7 +25,7 @@ install_external_plugins() {
       # Keep going on failure so one bad plugin doesn't block the others, but emit a clear,
       # greppable warning so the failure is discoverable in `docker logs`.
       if ! (cd "$plugin" && gosu clusterio npm install --omit=dev); then
-        echo "  WARNING: plugin '$plugin_name' failed to install/build — its bundle may be broken or stale"
+        echo "  WARNING: plugin '$plugin_name' failed to install/build — its bundle may be broken or stale" >&2
       fi
 
       # Remove any @clusterio packages that npm may have installed locally.
