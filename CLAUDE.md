@@ -15,6 +15,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with th
 
 **Clusterio version**: `release` builds are pinned to **`2.0.0-alpha.25`** via the `CLUSTERIO_VERSION` build arg (see Build Arguments). Bump that one value to upgrade. `custom`/non-main branch builds compile from the bundled `clusterio/` source instead.
 
+**Factorio 2.1 support**: targeting Factorio **2.1.x** (e.g. `2.1.8`) requires the **`custom`** build — the bundled `clusterio/` fork carries the 2.1 patches (`ApiVersions` + `clusterio_lib` `factorio_version: "2.1"` variant + `Base Game/Space Age 2.1` default packs). Upstream Clusterio (npm `@clusterio/*`, incl. the latest alpha) has **not** added 2.1 support, so the `release` target still cannot run Factorio 2.1. Factorio version-locks mods by `major.minor`, so without the `clusterio_lib` 2.1 variant the library mod is disabled on a 2.1 server and nothing patches in.
+
 ## Repository Structure
 
 ```
@@ -148,8 +150,8 @@ When the controller volume is wiped but host volumes persist, the controller gen
 | `CONTROLLER_PUBLIC_ADDRESS` | No | — | Public URL for external access |
 | `HOST_COUNT` | No | `0` (standalone) / `2` (compose) | Host token count |
 | `EXPORT_HOST` | No | `1` (compose) | Host ID with game client for export-data. Set to `0` or empty to skip. |
-| `DEFAULT_MOD_PACK` | No | `Base Game 2.0` (standalone) / `Space Age 2.0` (compose) | Mod pack name for instances (created if not found; DLC auto-enabled if name contains "Space Age") |
-| `DEFAULT_FACTORIO_VERSION` | No | `2.0` | Factorio version for auto-created mod packs |
+| `DEFAULT_MOD_PACK` | No | `Base Game 2.1` (standalone) / `Space Age 2.1` (compose) | Mod pack name for instances (created if not found; DLC auto-enabled if name contains "Space Age") |
+| `DEFAULT_FACTORIO_VERSION` | No | `2.1` | Factorio version for auto-created mod packs |
 | `FACTORIO_USERNAME` | No | — | Factorio.com username |
 | `FACTORIO_TOKEN` | No | — | Factorio.com token |
 
@@ -390,8 +392,8 @@ Set `"instance.auto_start": false` to prevent auto-starting after seeding.
 
 ### 7. DEFAULT_MOD_PACK and DLC Mods
 **Symptom**: Instances start without DLC mods (Space Age, etc.) or export-data is missing DLC assets
-**Cause**: `DEFAULT_MOD_PACK` was set to `"Base Game 2.0"` (no DLC)
-**Fix**: Set `DEFAULT_MOD_PACK=Space Age 2.0` in controller env. If the name contains "Space Age", the entrypoint automatically enables the `space-age`, `elevated-rails`, and `quality` builtin mods when creating the pack. If the name doesn't match an existing pack, it's created automatically using `DEFAULT_FACTORIO_VERSION`. Requires volume wipe + redeploy (mod pack is set on first run only).
+**Cause**: `DEFAULT_MOD_PACK` was set to `"Base Game 2.1"` (no DLC)
+**Fix**: Set `DEFAULT_MOD_PACK=Space Age 2.1` in controller env. If the name contains "Space Age", the entrypoint automatically enables the `space-age`, `elevated-rails`, and `quality` builtin mods when creating the pack. If the name doesn't match an existing pack, it's created automatically using `DEFAULT_FACTORIO_VERSION`. Requires volume wipe + redeploy (mod pack is set on first run only).
 
 ### 8. INSTALL_FACTORIO_CLIENT Credentials Exposed in Image History
 **Symptom**: `docker history` reveals Factorio account credentials

@@ -124,8 +124,8 @@ SEED_MARKER="$DATA_DIR/.seed-complete"
 CONTROL_CONFIG="$TOKENS_DIR/config-control.json"
 
 # Resolve default mod pack ID (used by both first-run seeding and ongoing mod uploads)
-DEFAULT_MOD_PACK="${DEFAULT_MOD_PACK:-Base Game 2.0}"
-DEFAULT_FACTORIO_VERSION="${DEFAULT_FACTORIO_VERSION:-2.0}"
+DEFAULT_MOD_PACK="${DEFAULT_MOD_PACK:-Base Game 2.1}"
+DEFAULT_FACTORIO_VERSION="${DEFAULT_FACTORIO_VERSION:-2.1}"
 MOD_PACK_ID=$(gosu clusterio npx clusterioctl --log-level error mod-pack list \
   --config "$CONTROL_CONFIG" 2>/dev/null \
   | grep "$DEFAULT_MOD_PACK" | awk -F'|' '{print $1}' | tr -d ' ' || true)

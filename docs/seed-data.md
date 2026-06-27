@@ -104,7 +104,7 @@ seed-data/
 **How it works:**
 
 1. On every startup, all `.zip` files in `seed-data/mods/` are uploaded to the **controller** via the API (already-uploaded mods are skipped)
-2. Uploaded mods are automatically **added to the default mod pack** (`DEFAULT_MOD_PACK` env var, e.g., "Space Age 2.0"). The `--add-mods` command is idempotent — already-added mods are unchanged
+2. Uploaded mods are automatically **added to the default mod pack** (`DEFAULT_MOD_PACK` env var, e.g., "Space Age 2.1"). The `--add-mods` command is idempotent — already-added mods are unchanged
 3. **Hosts** pre-cache mods locally from the same seed-data mount on every startup — no network download needed
 4. **Instances** automatically get symlinks to the host's cached mods when they start
 
@@ -116,7 +116,7 @@ You can also manage mod packs manually via the Web UI or CLI:
 
 ```bash
 # Create a mod pack
-docker exec clusterio-controller npx clusterioctl mod-pack create "My Pack" 2.0 --mods my-mod:1.0.0
+docker exec clusterio-controller npx clusterioctl mod-pack create "My Pack" 2.1 --mods my-mod:1.0.0
 
 # List uploaded mods
 docker exec clusterio-controller npx clusterioctl mod list
@@ -195,7 +195,7 @@ docker exec clusterio-host-1 cat /clusterio/data/instances/MyInstance/instance.j
 ```json
 {
   "instance.auto_start": true,
-  "factorio.version": "2.0.73",
+  "factorio.version": "2.1.8",
   "factorio.game_port": 34198,
   "factorio.settings": {
     "name": "My Server",

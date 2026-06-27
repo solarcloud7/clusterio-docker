@@ -44,7 +44,7 @@ services:
       - INIT_CLUSTERIO_ADMIN=your_username  # Required on first run
       - HOST_COUNT=1                        # Number of hosts to generate tokens for
       - EXPORT_HOST=1                       # Which host has the game client (0 = skip)
-      - DEFAULT_MOD_PACK=Space Age 2.0
+      - DEFAULT_MOD_PACK=Space Age 2.1
 
   clusterio-host-1:
     image: ghcr.io/solarcloud7/clusterio-docker-host:latest
