@@ -146,7 +146,7 @@ jobs:
 
           # Test fixtures are committed to the repo:
           #   seed-data/hosts/clusterio-host-1/TestInstance/dummy.zip  (test save)
-          #   seed-data/mods/squeak-through-2_0.1.3.zip               (test mod)
+          #   seed-data/mods/squeak-through-2_0.2.0.zip               (test mod)
 
           # Add a second instance on host-2 with auto_start disabled
           mkdir -p seed-data/hosts/clusterio-host-2/StoppedInstance
@@ -225,7 +225,7 @@ jobs:
           echo "=== Verify mod added to default mod pack ==="
           docker exec clusterio-controller npx clusterioctl \
             --config /clusterio/tokens/config-control.json \
-            mod-pack show "Space Age 2.0" 2>/dev/null | grep -q "squeak-through-2" \
+            mod-pack show "Space Age 2.1" 2>/dev/null | grep -q "squeak-through-2" \
             && echo "PASS: Mod 'squeak-through-2' in default mod pack" \
             || { echo "FAIL: Mod not found in default mod pack"; exit 1; }
 
