@@ -10,7 +10,7 @@ ARG CLUSTERIO_TARGET=release
 # Clusterio version for the release target (npm registry packages).
 # Pinned for reproducible builds — bump deliberately on each Clusterio release.
 # Ignored by the custom target, which builds from the clusterio/ source instead.
-ARG CLUSTERIO_VERSION=2.0.0-alpha.25
+ARG CLUSTERIO_VERSION=2.0.0-alpha.26
 
 # Base image pinned by digest for reproducible builds. The tag is kept for
 # readability; the digest is what's actually resolved. Refresh both periodically
@@ -72,7 +72,7 @@ RUN pnpm install
 FROM base AS release
 
 # Re-declare to bring the global ARG into this stage's scope
-ARG CLUSTERIO_VERSION=2.0.0-alpha.25
+ARG CLUSTERIO_VERSION=2.0.0-alpha.26
 
 USER clusterio
 

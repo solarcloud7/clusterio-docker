@@ -36,7 +36,7 @@ docker pull ghcr.io/solarcloud7/clusterio-docker-controller:latest
 docker pull ghcr.io/solarcloud7/clusterio-docker-host:latest
 ```
 
-Images are also tagged with the bundled Clusterio version (e.g. `:2.0.0-alpha.25`) so you can pin a specific release.
+Images are also tagged with the bundled Clusterio version (e.g. `:2.0.0-alpha.26`) so you can pin a specific release.
 
 > **Note**: Image names include `-docker-` because CI derives them from the repository name (`clusterio-docker`).
 
@@ -193,7 +193,7 @@ These are set at build time via `docker compose build` or `--build-arg`. In dock
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `CLUSTERIO_TARGET` | `release` | `release` (npm packages) or `custom` (build from the bundled `clusterio/` source) |
-| `CLUSTERIO_VERSION` | `2.0.0-alpha.25` | Pinned Clusterio version for the `release` target — all `@clusterio/*` packages install at this version. Ignored by `custom`. |
+| `CLUSTERIO_VERSION` | `2.0.0-alpha.26` | Pinned Clusterio version for the `release` target — all `@clusterio/*` packages install at this version. Ignored by `custom`. |
 | `NODE_IMAGE` | `node:24-bookworm-slim@sha256:…` | Base Node image, pinned by digest for reproducible builds |
 | `BAKE_FACTORIO_HEADLESS` | `false` | Bake Factorio headless into the image. **Default `false`** — images ship no Factorio (Wube's EULA forbids redistributing it); Clusterio downloads it at runtime. Set `true` only for private/offline images. |
 | `FACTORIO_HEADLESS_TAG` | `stable` | Factorio headless version to bake (only used when `BAKE_FACTORIO_HEADLESS=true`) |

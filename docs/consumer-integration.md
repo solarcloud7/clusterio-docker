@@ -6,7 +6,7 @@ How to use clusterio-docker images in a downstream project.
 
 | Tag | Source | Use Case |
 |-----|--------|----------|
-| `latest` / `main` | npm registry (`@clusterio/*`), pinned to **`2.0.0-alpha.25`** | Stable, published Clusterio |
+| `latest` / `main` | npm registry (`@clusterio/*`), pinned to **`2.0.0-alpha.26`** | Stable, published Clusterio |
 | `<branch>` | Built from fork branch `solarcloud7/clusterio:<branch>` on a **non-main branch push** (falls back to the fork's default branch, `master`). PRs, `main`, and tags build the `release` target. | Custom builds from a Clusterio fork branch |
 
 ```yaml
