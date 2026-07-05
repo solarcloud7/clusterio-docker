@@ -26,6 +26,12 @@ Please make sure CI is green before requesting a merge.
 
 ## Branches & CI targets
 
+**The default branch is the active Factorio line (`factorio-2.1.8`), not `main`** — see
+README → "Branch model". Base PRs on the default branch unless you're specifically fixing the
+npm-release line: `main` is parked until the npm release supports the current Factorio version,
+and its two remaining jobs are release-target validation and (eventually) absorbing the active
+line when npm catches up.
+
 - **Pull requests into `main`**, **`main`**, and **tags** build the `release` target
   (npm-published `@clusterio/*` packages, pinned via `CLUSTERIO_VERSION`).
 - **Pull requests into `factorio-*` branches** build the `custom` target from the fork branch
