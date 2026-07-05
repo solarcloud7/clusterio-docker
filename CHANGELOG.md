@@ -13,6 +13,11 @@ Factorio versions when they change.
 
 ## 2026-07-05
 
+- CI: **factorio-* PRs now build the custom target** from the fork branch
+  matching the PR base — the npm release lags the fork's Factorio-version
+  support (empirically: alpha.26 rejects 2.1-format mod `info.json` and lacks
+  the `recycler` builtin), so release-target PR runs failed mod seeding on
+  content the merge would actually ship. PR validation is now faithful.
 - CI: **pre-merge validation for release-branch PRs** — `pull_request` now also
   triggers on PRs into `factorio-*` branches (build + full test suite, no image
   push). The `'*'` push filter's no-slash behavior is now documented as
