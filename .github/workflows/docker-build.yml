@@ -69,9 +69,11 @@ jobs:
             type=semver,pattern={{major}}.{{minor}}
             type=raw,value=latest,enable={{is_default_branch}}
             type=raw,value=${{ steps.clusterio_version.outputs.version }},enable={{is_default_branch}}
+            type=raw,value=${{ github.ref_name }}-clusterio-${{ steps.clusterio_version.outputs.version }},enable=${{ github.event_name != 'pull_request' }}
           labels: |
             org.opencontainers.image.title=Clusterio Controller
             org.opencontainers.image.description=Clusterio cluster controller with web UI and API
+            io.clusterio.version=${{ steps.clusterio_version.outputs.version }}
 
       - name: Extract metadata for Host
         id: meta-host
@@ -85,9 +87,11 @@ jobs:
             type=semver,pattern={{major}}.{{minor}}
             type=raw,value=latest,enable={{is_default_branch}}
             type=raw,value=${{ steps.clusterio_version.outputs.version }},enable={{is_default_branch}}
+            type=raw,value=${{ github.ref_name }}-clusterio-${{ steps.clusterio_version.outputs.version }},enable=${{ github.event_name != 'pull_request' }}
           labels: |
             org.opencontainers.image.title=Clusterio Host
             org.opencontainers.image.description=Clusterio host with Factorio headless server
+            io.clusterio.version=${{ steps.clusterio_version.outputs.version }}
 
       - name: Build and push Controller image
         uses: docker/build-push-action@v5
@@ -97,7 +101,9 @@ jobs:
           push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ steps.meta-controller.outputs.tags }}
           labels: ${{ steps.meta-controller.outputs.labels }}
-          build-args: CLUSTERIO_TARGET=${{ env.CLUSTERIO_TARGET }}
+          build-args: |
+            CLUSTERIO_TARGET=${{ env.CLUSTERIO_TARGET }}
+            BUILD_REVISION=${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -109,7 +115,9 @@ jobs:
           push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ steps.meta-host.outputs.tags }}
           labels: ${{ steps.meta-host.outputs.labels }}
-          build-args: CLUSTERIO_TARGET=${{ env.CLUSTERIO_TARGET }}
+          build-args: |
+            CLUSTERIO_TARGET=${{ env.CLUSTERIO_TARGET }}
+            BUILD_REVISION=${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 

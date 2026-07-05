@@ -199,6 +199,18 @@ RUN node /tmp/suppress-dev-warning.js && rm /tmp/suppress-dev-warning.js \
 # Switch back to root for entrypoint (gosu will drop to clusterio)
 USER root
 
+# Build provenance: "what am I running?" becomes a file read
+# (docker exec <c> cat /clusterio/BUILD_INFO) instead of grepping node_modules.
+# Re-declare ARGs to bring them into this stage's scope; BUILD_REVISION is
+# injected by CI (github.sha) and busts this layer's cache so builtAt is honest.
+ARG CLUSTERIO_VERSION=2.0.0-alpha.26
+ARG CLUSTERIO_TARGET=release
+ARG BUILD_REVISION=unknown
+RUN printf '{\n  "clusterioVersion": "%s",\n  "clusterioTarget": "%s",\n  "gitSha": "%s",\n  "builtAt": "%s"\n}\n' \
+      "$CLUSTERIO_VERSION" "$CLUSTERIO_TARGET" "$BUILD_REVISION" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+      > /clusterio/BUILD_INFO \
+    && chown clusterio:clusterio /clusterio/BUILD_INFO
+
 COPY --chmod=755 scripts/install-plugins.sh /scripts/install-plugins.sh
 COPY --chmod=755 scripts/host-entrypoint.sh /host-entrypoint.sh
 

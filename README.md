@@ -36,7 +36,26 @@ docker pull ghcr.io/solarcloud7/clusterio-docker-controller:latest
 docker pull ghcr.io/solarcloud7/clusterio-docker-host:latest
 ```
 
-Images are also tagged with the bundled Clusterio version (e.g. `:2.0.0-alpha.26`) so you can pin a specific release.
+### Image tags & provenance
+
+Tags are published on **two axes** so version drift is a deliberate choice, not a rebuild
+side-effect:
+
+| Tag | Meaning | Mutability |
+|-----|---------|------------|
+| `:factorio-2.1.8-clusterio-2.0.0-alpha.26` | branch target **+** bundled Clusterio version | immutable pair — **pin this** |
+| `:factorio-2.1.8` | the branch's latest build | moves on every rebuild (bundled Clusterio can change under it) |
+| `:2.0.0-alpha.26` | bundled Clusterio version (default branch builds) | stable per Clusterio release |
+| `:latest` | default branch's latest build | moves |
+
+Every image also carries the label `io.clusterio.version` (readable via
+`docker inspect -f '{{index .Config.Labels "io.clusterio.version"}}' <image>`) and a
+**`/clusterio/BUILD_INFO`** file (`clusterioVersion`, `clusterioTarget`, `gitSha`, `builtAt`) so
+a running container can answer "what am I?" with a file read:
+
+```bash
+docker exec clusterio-controller cat /clusterio/BUILD_INFO
+```
 
 > **Note**: Image names include `-docker-` because CI derives them from the repository name (`clusterio-docker`).
 
@@ -377,6 +396,37 @@ To use external Clusterio plugins, mount a plugins directory into the containers
 3. Plugins are automatically installed on container startup
 
 > **Important**: The plugins mount must NOT be read-only (`:ro`). The entrypoint runs `npm install` inside each plugin directory.
+
+### The install contract (what the entrypoint does to your plugin)
+
+For each immediate subdirectory of the mount that contains a `package.json`, on every container
+start the entrypoint (`scripts/install-plugins.sh`):
+
+1. `chown -R clusterio:clusterio` on the plugins dir, then runs `npm install --omit=dev` inside
+   the plugin **as the clusterio user**.
+2. An install failure is **non-fatal**: a `WARNING` is written to stderr (greppable in
+   `docker logs`) and startup continues — a broken plugin won't take down the cluster, but it
+   also won't be silently absent; check the logs.
+3. **Strips `node_modules/@clusterio` from the plugin afterwards.** Clusterio fatally rejects a
+   duplicate `@clusterio/lib` import, and npm 7+ auto-installs peerDependencies — so a vendored
+   copy would crash every `clusterioctl` invocation cluster-wide. Never ship or bake `@clusterio/*`
+   inside a plugin's `node_modules`; keep those as peerDependencies and let the image's copy win.
+
+### Operational note: the instance/plugin boot race
+
+Instance plugins are only loaded if the plugin is present in the controller's WebSocket `hello`
+when the instance starts. If an instance **auto-starts before its host finishes the controller
+handshake** (e.g. right after `docker compose up -d` or a host container restart), instance
+plugins can be **silently skipped — no error, IPC just goes nowhere**. Recommended consumer
+protocol after any container (re)start:
+
+1. Wait for controller and host containers to be healthy.
+2. `clusterioctl instance stop <name>` then `instance start <name>`.
+3. **Verify a plugin behavior** (a plugin command or a data write), not just "the instance runs".
+
+Also note: instance restarts re-patch save-embedded **Lua** modules, but a host that has already
+loaded a plugin's **Node** code keeps serving it from the require cache — after changing plugin
+Node code, restart the **host container**, not just the instance.
 
 ---
 
