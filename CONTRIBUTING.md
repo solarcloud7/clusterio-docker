@@ -26,9 +26,11 @@ Please make sure CI is green before requesting a merge.
 
 ## Branches & CI targets
 
-- **Pull requests** (into `main` or `factorio-*` branches), **`main`**, and **tags** build the
-  `release` target (npm-published `@clusterio/*` packages, pinned via `CLUSTERIO_VERSION`).
-  PR builds run the full test suite but never push images.
+- **Pull requests into `main`**, **`main`**, and **tags** build the `release` target
+  (npm-published `@clusterio/*` packages, pinned via `CLUSTERIO_VERSION`).
+- **Pull requests into `factorio-*` branches** build the `custom` target from the fork branch
+  matching the PR's **base** — faithful to what the merge will publish (the npm release can lag
+  the fork's Factorio-version fixes, e.g. 2.1 mod-info parsing). PR builds never push images.
 - **Non-main branch _pushes_** build the `custom` target from the matching branch
   of the `solarcloud7/clusterio` fork (falling back to the fork's default branch).
 - **Slash-named branches (`feat/...`, `docs/...`) intentionally get no push CI** — the `'*'`
