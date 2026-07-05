@@ -127,7 +127,11 @@ CONTROL_CONFIG="${CONTROL_CONFIG:-$TOKENS_DIR/config-control.json}"
 GUARD_LOG="$DATA_DIR/boot-race-guard.log"
 
 ctl_ro() {
-    gosu clusterio npx clusterioctl --log-level error "$@" --config "$CONTROL_CONFIG" 2>/dev/null
+    # Hard-bounded: clusterioctl has no client-side timeout and HANGS indefinitely
+    # against a reachable-but-mid-boot controller (root cause of #24 — the guard's
+    # first host-list call froze forever, so neither progress nor the deadline
+    # message ever appeared). timeout's exit 124 just makes the poll loops iterate.
+    timeout -k 5 25 gosu clusterio npx clusterioctl --log-level error "$@" --config "$CONTROL_CONFIG" 2>/dev/null
 }
 
 # Guard messages go to BOTH stdout and a file: if stdout capture ever fails,
@@ -138,23 +142,26 @@ guard_log() {
 }
 
 boot_race_guard() {
-    local deadline=180 elapsed=0 T inst w
+    # Wall-clock deadline (SECONDS is bash's elapsed timer): each ctl_ro poll can
+    # itself burn up to ~25s in timeout, so counting sleeps alone would stretch
+    # the nominal deadline to many minutes of real time.
+    local deadline=$((SECONDS + 240)) T inst w
     guard_log "started (pid $$, host $HOST_NAME/$HOST_ID)"
     while [ ! -f "$CONTROL_CONFIG" ]; do
-        if [ "$elapsed" -ge "$deadline" ]; then
-            guard_log "no control config after ${deadline}s (standalone host?) — skipping"
+        if [ "$SECONDS" -ge "$deadline" ]; then
+            guard_log "no control config appeared (standalone host?) — skipping"
             return 0
         fi
-        sleep 5; elapsed=$((elapsed + 5))
+        sleep 5
     done
     guard_log "control config present — waiting for controller to report this host connected"
     until ctl_ro host list | awk -F'|' -v n="$HOST_NAME" \
         'function t(s){gsub(/^ +| +$/,"",s);return s} NR>2 && t($2)==n && t($4)=="true"{ok=1} END{exit !ok}'; do
-        if [ "$elapsed" -ge "$deadline" ]; then
-            guard_log "host never reported connected within ${deadline}s — skipping"
+        if [ "$SECONDS" -ge "$deadline" ]; then
+            guard_log "host never reported connected within the deadline — skipping"
             return 0
         fi
-        sleep 5; elapsed=$((elapsed + 5))
+        sleep 5
     done
     T=$(node -e 'console.log(Date.now())')
     guard_log "handshake confirmed at $T — checking for instances started before it"
@@ -163,14 +170,14 @@ boot_race_guard() {
     | while IFS= read -r inst; do
         guard_log "'$inst' started before the handshake — restarting it so plugins register"
         ctl_ro instance stop "$inst" || true
-        w=0
+        w=$((SECONDS + 90))
         until ctl_ro instance list | awk -F'|' -v i="$inst" \
             'function t(s){gsub(/^ +| +$/,"",s);return s} NR>2 && t($1)==i && t($5)=="stopped"{ok=1} END{exit !ok}'; do
-            if [ "$w" -ge 60 ]; then
-                guard_log "'$inst' did not stop within 60s — leaving it as-is"
+            if [ "$SECONDS" -ge "$w" ]; then
+                guard_log "'$inst' did not stop within the wait budget — leaving it as-is"
                 break
             fi
-            sleep 3; w=$((w + 3))
+            sleep 3
         done
         ctl_ro instance start "$inst" || true
         guard_log "'$inst' restarted after handshake"

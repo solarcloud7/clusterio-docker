@@ -345,7 +345,7 @@ jobs:
 
           echo "=== Boot-race guard completed on both hosts (2nd run = post-restart) ==="
           for h in clusterio-host-1 clusterio-host-2; do
-            timeout 240 bash -c "until [ \"\$(docker logs $h 2>&1 | grep -c 'boot-race guard: complete')\" -ge 2 ]; do sleep 5; done" \
+            timeout 330 bash -c "until [ \"\$(docker logs $h 2>&1 | grep -c 'boot-race guard: complete')\" -ge 2 ]; do sleep 5; done" \
               && echo "PASS: guard completed on $h after restart" \
               || { echo "FAIL: guard did not complete on $h after restart"
                    echo "--- stdout tail ---"; docker logs "$h" 2>&1 | tail -30
