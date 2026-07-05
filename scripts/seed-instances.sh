@@ -219,8 +219,27 @@ seed_instance() {
     fi
 
     echo "      Starting instance: $instance_name"
-    gosu clusterio npx clusterioctl --log-level error instance start "$instance_name" \
-      --config "$CONTROL_CONFIG" 2>/dev/null || true
+    # Honest start (#20): the old single-shot `instance start || true` could
+    # fire before the host had created the instance dir and swallowed the
+    # failure — an instance silently stayed stopped. Retry until running,
+    # WARN loud on giving up. ctl calls are timeout-bounded (#24 rule).
+    local _start_deadline=$((SECONDS + 120)) _started=false
+    while [ "$SECONDS" -lt "$_start_deadline" ]; do
+      timeout 25 gosu clusterio npx clusterioctl --log-level error instance start "$instance_name" \
+        --config "$CONTROL_CONFIG" 2>/dev/null || true
+      sleep 5
+      if timeout 25 gosu clusterio npx clusterioctl --log-level error instance list \
+          --config "$CONTROL_CONFIG" 2>/dev/null \
+          | awk -F'|' -v i="$instance_name" 'function t(s){gsub(/^ +| +$/,"",s);return s} NR>2 && t($1)==i && t($5)=="running"{ok=1} END{exit !ok}'; then
+        _started=true
+        break
+      fi
+    done
+    if [ "$_started" = "true" ]; then
+      echo "      Instance '$instance_name' is running."
+    else
+      echo "      WARNING: instance '$instance_name' did not reach running within 120s — check the host's logs" >&2
+    fi
   else
     echo "      Skipping auto-start (instance.auto_start=false)"
   fi

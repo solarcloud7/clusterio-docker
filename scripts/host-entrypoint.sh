@@ -21,6 +21,14 @@ WAIT_INTERVAL=5
 mkdir -p "$DATA_DIR"
 chown -R clusterio:clusterio "$DATA_DIR"
 
+# Honest readiness: the healthcheck's connected-marker is per-boot state —
+# clear any stale copy before the guard can re-establish it.
+rm -f /run/clusterio-connected
+
+# Mirror Clusterio's on-disk host log to stdout (CLUSTERIO_LOG_TO_STDOUT).
+source /scripts/stream-logs.sh
+start_log_streamer /clusterio/logs/host host
+
 # Handle external plugins if mounted
 source /scripts/install-plugins.sh
 install_external_plugins "$EXTERNAL_PLUGINS_DIR"
@@ -188,6 +196,9 @@ boot_race_guard() {
         sleep 5
     done
     T=$(node -e 'console.log(Date.now())')
+    # Honest readiness: the image healthcheck requires this marker (when the
+    # shared tokens volume is present) — "container up" now means "connected".
+    touch /run/clusterio-connected 2>/dev/null || true
     guard_log "handshake confirmed at $T — checking for instances started before it"
     ctl_ro instance list | awk -F'|' -v hid="$HOST_ID" -v T="$T" \
         'function t(s){gsub(/^ +| +$/,"",s);return s} NR>2 && t($3)==hid && (t($5)=="running"||t($5)=="starting") && t($7)+0>0 && t($7)+0<T {print t($1)}' \

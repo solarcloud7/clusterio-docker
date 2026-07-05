@@ -216,6 +216,7 @@ docker run -d -p 34100-34199:34100-34199/udp \
 | `FACTORIO_TOKEN` | *(unset)* | Factorio account token from [factorio.com/profile](https://factorio.com/profile) |
 | `EXPORT_HOST` | `1` (compose) / `0` (skip) | Host ID whose instance runs `export-data` (web-UI icons/prototypes) during first-run seeding — that host needs the game client. See [Asset Export](docs/asset-export.md). |
 | `CONTROLLER_STATIC_CACHE_MODE` | `revalidate` | `/static` cache headers: `revalidate` (default — non-hashed web-UI assets stay fresh across upgrades) or `immutable` (stock Clusterio behavior) |
+| `CLUSTERIO_LOG_TO_STDOUT` | `true` | Mirror the on-disk cluster/host logs (plugin logger output) to container stdout with a `[cluster-log]` prefix |
 
 ### Host
 
@@ -327,6 +328,14 @@ Hosts pre-cache mods locally from the seed-data mount on every startup for faste
 ---
 
 ## Viewing Logs
+
+> **Plugin logs stream to stdout.** Clusterio routes plugin logger output
+> (`this.logger.*`) to files on disk — historically invisible in `docker logs` and "the #1
+> gotcha that wastes hours." These images now mirror those files to container stdout, prefixed
+> `[cluster-log] `, so `docker logs clusterio-host-1 | grep '\[cluster-log\]'` shows your
+> plugin's lines. Opt out with `CLUSTERIO_LOG_TO_STDOUT=false`. The raw files remain at
+> `/clusterio/logs/cluster/` (controller) and `/clusterio/logs/host/` (hosts); engine/module
+> Lua output stays in the instance's `factorio-current.log`.
 
 ### Dozzle
 

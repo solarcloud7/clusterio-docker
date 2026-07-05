@@ -13,6 +13,17 @@ Factorio versions when they change.
 
 ## 2026-07-05
 
+- **Observability: plugin logs stream to stdout** — the on-disk cluster/host
+  JSON logs (where Clusterio routes all plugin logger output, invisible in
+  `docker logs`) are now mirrored to container stdout with a `[cluster-log]`
+  prefix (`CLUSTERIO_LOG_TO_STDOUT`, default true; daily rollover handled).
+  CI asserts the payoff.
+- **Honest readiness** — controller healthcheck now also requires the
+  entrypoint's steady-state marker (healthy = seeded, kills the double
+  `up -d`); host healthcheck now requires the boot-race guard's connected
+  marker when the tokens volume is present (healthy = connected; degrades to
+  process-only standalone); the seeder's `instance start` is a retrying,
+  loud-on-failure loop instead of a swallowed one-shot.
 - Controller: **static-cache patch absorbed** — `/static`'s `immutable, 1y`
   headers pinned stale web-UI chunks on returning browsers; the controller now
   flips them to revalidation at startup (opt out with

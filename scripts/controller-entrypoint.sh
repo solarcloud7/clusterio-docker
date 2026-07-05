@@ -21,6 +21,14 @@ if compgen -G "$DATA_DIR/*.lock" > /dev/null 2>&1; then
   rm -f "$DATA_DIR"/*.lock
 fi
 
+# Honest readiness: the healthcheck requires this marker, written only when the
+# entrypoint reaches steady state (post-seeding) — clear any stale copy first.
+rm -f "$DATA_DIR/.seed-healthy"
+
+# Mirror Clusterio's on-disk cluster log to stdout (CLUSTERIO_LOG_TO_STDOUT).
+source /scripts/stream-logs.sh
+start_log_streamer /clusterio/logs/cluster cluster
+
 # Handle external plugins if mounted
 source /scripts/install-plugins.sh
 install_external_plugins "$EXTERNAL_PLUGINS_DIR"
@@ -198,6 +206,11 @@ else
   # Not first run — upload any new mods added since last run (existing mods are skipped)
   /scripts/seed-mods.sh "$CONTROL_CONFIG" "$MOD_PACK_ID"
 fi
+
+# Honest readiness: everything above (config, bootstrap, seeding) completed —
+# only now does the healthcheck's marker requirement pass.
+touch "$DATA_DIR/.seed-healthy"
+echo "Entrypoint steady state reached — controller healthcheck can now pass"
 
 # Keep controller running
 wait $CONTROLLER_PID

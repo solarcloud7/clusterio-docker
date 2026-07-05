@@ -123,6 +123,7 @@ RUN printf '{\n  "clusterioVersion": "%s",\n  "clusterioTarget": "%s",\n  "gitSh
       > /clusterio/BUILD_INFO \
     && chown clusterio:clusterio /clusterio/BUILD_INFO
 
+COPY --chmod=755 scripts/stream-logs.sh /scripts/stream-logs.sh
 COPY --chmod=755 scripts/install-plugins.sh /scripts/install-plugins.sh
 COPY --chmod=755 scripts/seed-mods.sh /scripts/seed-mods.sh
 COPY --chmod=755 scripts/seed-instances.sh /scripts/seed-instances.sh
@@ -130,7 +131,11 @@ COPY --chmod=755 scripts/regenerate-export-data.sh /scripts/regenerate-export-da
 COPY scripts/patches/disable-immutable-cache.js /scripts/patches/disable-immutable-cache.js
 COPY --chmod=755 scripts/controller-entrypoint.sh /controller-entrypoint.sh
 
-HEALTHCHECK --interval=10s --timeout=3s --start-period=30s --retries=6 \
-  CMD curl -sf http://localhost:${CONTROLLER_HTTP_PORT:-8080}/ || exit 1
+# Honest readiness (#20): HTTP up AND the entrypoint reached steady state
+# (seeding complete) — kills the "healthy while seeding is mid-flight" class
+# that forced consumers to run `up -d` twice. start-period covers first-run
+# seeding (mod uploads etc.).
+HEALTHCHECK --interval=10s --timeout=3s --start-period=90s --retries=6 \
+  CMD sh -c 'curl -sf http://localhost:${CONTROLLER_HTTP_PORT:-8080}/ >/dev/null && [ -f /clusterio/data/.seed-healthy ]' || exit 1
 
 ENTRYPOINT ["/controller-entrypoint.sh"]
