@@ -13,6 +13,10 @@ Factorio versions when they change.
 
 ## 2026-07-05
 
+- CI: absorbed `main`'s Node-24 Actions bump (checkout@v6, buildx@v4,
+  login@v4, metadata@v6, build-push@v7) — kills the deprecation warnings on
+  every run; `main` now holds nothing the active line lacks. No image content
+  change.
 - **Default branch flipped `main` → `factorio-2.1.8`** (publishing-semantics
   change, no code change): the repo's face (README, issue templates, this
   file) is now the active line, and `latest` + the Clusterio version tag
