@@ -13,6 +13,13 @@ Factorio versions when they change.
 
 ## 2026-07-05
 
+- **Default branch flipped `main` → `factorio-2.1.8`** (publishing-semantics
+  change, no code change): the repo's face (README, issue templates, this
+  file) is now the active line, and `latest` + the Clusterio version tag
+  publish from its **custom** (fork) builds — `BUILD_INFO.clusterioTarget`
+  records which target built any image. `main` is parked as the npm-release
+  line until the npm release supports Factorio 2.1 (alpha.26 provably
+  doesn't). Branch model documented in README + CONTRIBUTING.
 - **Observability: plugin logs stream to stdout** — the on-disk cluster/host
   JSON logs (where Clusterio routes all plugin logger output, invisible in
   `docker logs`) are now mirrored to container stdout with a `[cluster-log]`

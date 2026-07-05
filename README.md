@@ -72,6 +72,23 @@ side-effect:
 > not baked game content. The **Clusterio version is the content-bearing half** of the pair tag,
 > which is why `BUILD_INFO` records `clusterioVersion` and has no `factorioVersion` field.
 
+### Branch model (why the default branch is `factorio-2.1.8`, not `main`)
+
+**The default branch is the actively-maintained Factorio line** — currently `factorio-2.1.8` —
+not `main`. This is deliberate (as of 2026-07-05) and not obvious out of the box:
+
+| Branch | Role | Build target |
+|--------|------|--------------|
+| `factorio-2.1.8` (**default**) | The active line: all hardening, docs, CHANGELOG, and issue templates live here; `latest` + the Clusterio version tag publish from it | `custom` (fork branch `solarcloud7/clusterio@factorio-2.1.8`) |
+| `main` | The npm-release line — **parked** until the npm release supports the current Factorio version (empirically: alpha.26 rejects 2.1-format mod `info.json` and lacks the `recycler` builtin) | `release` (npm `@clusterio/*`) |
+| future `factorio-*` | New Factorio lines branch from the previous one | `custom` from the matching fork branch |
+
+Practical consequences: `:latest` and the Clusterio version tag currently come from **custom
+(fork) builds** — `BUILD_INFO`'s `clusterioTarget` field always records which target produced a
+running image. When a Clusterio npm release lands that fully supports the current Factorio
+line, `main` absorbs the active line and the default may move back. If you're reading this on
+GitHub, you're already on the default (active) branch.
+
 Every image also carries the label `io.clusterio.version` (readable via
 `docker inspect -f '{{index .Config.Labels "io.clusterio.version"}}' <image>`) and a
 **`/clusterio/BUILD_INFO`** file (`clusterioVersion`, `clusterioTarget`, `gitSha`, `builtAt`) so
