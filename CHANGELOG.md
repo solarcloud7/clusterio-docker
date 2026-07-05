@@ -13,6 +13,17 @@ Factorio versions when they change.
 
 ## 2026-07-05
 
+- Controller: **static-cache patch absorbed** — `/static`'s `immutable, 1y`
+  headers pinned stale web-UI chunks on returning browsers; the controller now
+  flips them to revalidation at startup (opt out with
+  `CONTROLLER_STATIC_CACHE_MODE=immutable`; graceful no-op if core fixes it
+  upstream). Deletes a production consumer's boot-time monkeypatch.
+- Export-data hardening: `scripts/regenerate-export-data.sh` (the documented
+  post-version-bump step, with retries); host startup WARNING when
+  `SKIP_CLIENT=true` on the `EXPORT_HOST`-designated host (blank-icon
+  contradiction made visible at the source).
+- Plugin docs: `.npmrc legacy-peer-deps` requirement + the two proven
+  workstation build patterns; clarified the per-boot `@clusterio` strip.
 - **Multi-cluster support**: host-side port publishings (`HOST1_PORTS`,
   `HOST2_PORTS`) and the external client volume name (`FACTORIO_CLIENT_VOLUME`)
   are now `.env`-parametrized; new `docs/multi-cluster.md` documents the four

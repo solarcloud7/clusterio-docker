@@ -104,6 +104,13 @@ if [ ! -f "$CONFIG_PATH" ]; then
   fi
 fi
 
+# Static-cache patch (absorbed consumer fix): the controller serves /static with
+# immutable 1y headers, pinning stale web-UI chunks on returning browsers after
+# upgrades. Flip to revalidation unless the consumer explicitly opts out.
+if [ "${CONTROLLER_STATIC_CACHE_MODE:-revalidate}" != "immutable" ]; then
+  node /scripts/patches/disable-immutable-cache.js
+fi
+
 # Start controller in background
 gosu clusterio npx clusteriocontroller run --config "$CONFIG_PATH" &
 CONTROLLER_PID=$!

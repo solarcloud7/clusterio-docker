@@ -55,13 +55,18 @@ against the first auto-start instance on that host — retrying up to 60×10 s w
 finishes booting (a fresh client download can take a while). Failure is a logged WARNING, not
 fatal: the cluster still comes up, just without web-UI icons.
 
-Run it manually any time (e.g. after a mod-pack change):
+**After any Factorio / client / mod-pack version change, regenerate** — the seed-time export
+does not re-run, so a version bump otherwise ships blank "?" icons:
 
 ```bash
-docker exec clusterio-controller npx clusterioctl \
-  --config /clusterio/tokens/config-control.json \
-  instance export-data <instance-name>
+docker exec clusterio-controller /scripts/regenerate-export-data.sh <instance-name>
 ```
+
+(The script stops the instance, retries `export-data` up to 6×, and restarts it. The raw
+`clusterioctl instance export-data` command remains available for manual control.)
+
+Misconfiguration guard: setting `SKIP_CLIENT=true` on the host that `EXPORT_HOST` designates
+logs a **WARNING at host startup** — that combination guarantees a failed export.
 
 ## What export-data produces
 

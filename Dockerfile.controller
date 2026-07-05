@@ -126,6 +126,8 @@ RUN printf '{\n  "clusterioVersion": "%s",\n  "clusterioTarget": "%s",\n  "gitSh
 COPY --chmod=755 scripts/install-plugins.sh /scripts/install-plugins.sh
 COPY --chmod=755 scripts/seed-mods.sh /scripts/seed-mods.sh
 COPY --chmod=755 scripts/seed-instances.sh /scripts/seed-instances.sh
+COPY --chmod=755 scripts/regenerate-export-data.sh /scripts/regenerate-export-data.sh
+COPY scripts/patches/disable-immutable-cache.js /scripts/patches/disable-immutable-cache.js
 COPY --chmod=755 scripts/controller-entrypoint.sh /controller-entrypoint.sh
 
 HEALTHCHECK --interval=10s --timeout=3s --start-period=30s --retries=6 \

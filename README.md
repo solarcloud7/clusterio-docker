@@ -214,6 +214,7 @@ docker run -d -p 34100-34199:34100-34199/udp \
 | `FACTORIO_USERNAME` | *(unset)* | Factorio account username (for mod portal & multiplayer) |
 | `FACTORIO_TOKEN` | *(unset)* | Factorio account token from [factorio.com/profile](https://factorio.com/profile) |
 | `EXPORT_HOST` | `1` (compose) / `0` (skip) | Host ID whose instance runs `export-data` (web-UI icons/prototypes) during first-run seeding — that host needs the game client. See [Asset Export](docs/asset-export.md). |
+| `CONTROLLER_STATIC_CACHE_MODE` | `revalidate` | `/static` cache headers: `revalidate` (default — non-hashed web-UI assets stay fresh across upgrades) or `immutable` (stock Clusterio behavior) |
 
 ### Host
 
