@@ -26,6 +26,8 @@ Docker images for running [Clusterio](https://github.com/clusterio/clusterio) - 
 - [Prometheus Metrics](#prometheus-metrics)
 - [Included Plugins](#included-plugins)
 - [External Plugins](#external-plugins)
+- [Asset Export — game client & export-data](docs/asset-export.md)
+- [Plugin Development guide](docs/plugin-development.md)
 - [Architecture](#architecture)
 - [Troubleshooting](#troubleshooting)
 - [Building Locally](#building-locally)
@@ -210,6 +212,7 @@ docker run -d -p 34100-34199:34100-34199/udp \
 | `DEFAULT_FACTORIO_VERSION` | `2.1` | Factorio version used when creating a new mod pack (only applies when `DEFAULT_MOD_PACK` doesn't match an existing pack) |
 | `FACTORIO_USERNAME` | *(unset)* | Factorio account username (for mod portal & multiplayer) |
 | `FACTORIO_TOKEN` | *(unset)* | Factorio account token from [factorio.com/profile](https://factorio.com/profile) |
+| `EXPORT_HOST` | `1` (compose) / `0` (skip) | Host ID whose instance runs `export-data` (web-UI icons/prototypes) during first-run seeding — that host needs the game client. See [Asset Export](docs/asset-export.md). |
 
 ### Host
 
@@ -416,6 +419,9 @@ To use external Clusterio plugins, mount a plugins directory into the containers
 3. Plugins are automatically installed on container startup
 
 > **Important**: The plugins mount must NOT be read-only (`:ro`). The entrypoint runs `npm install` inside each plugin directory.
+
+> **Developing a plugin?** See the [Plugin Development guide](docs/plugin-development.md) —
+> dev loop, the require-cache and boot-race traps, log locations, and a worked example.
 
 ### The install contract (what the entrypoint does to your plugin)
 
