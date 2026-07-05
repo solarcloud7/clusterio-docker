@@ -28,6 +28,7 @@ Docker images for running [Clusterio](https://github.com/clusterio/clusterio) - 
 - [External Plugins](#external-plugins)
 - [Asset Export — game client & export-data](docs/asset-export.md)
 - [Plugin Development guide](docs/plugin-development.md)
+- [Multi-cluster machines](docs/multi-cluster.md)
 - [Architecture](#architecture)
 - [Troubleshooting](#troubleshooting)
 - [Building Locally](#building-locally)
@@ -513,6 +514,33 @@ Check logs for errors:
 docker logs clusterio-controller
 docker logs clusterio-host-1
 ```
+
+### RCON answers but plugins seem frozen
+
+A headless server with Factorio's default `auto_pause: true` **pauses at 0 connected players**
+— every `on_tick`-driven plugin pipeline silently stops while RCON keeps responding, so the
+cluster *looks* alive. Set `"factorio.settings": { "auto_pause": false }` in the instance
+config (seedable — see [docs/seed-data.md](docs/seed-data.md)); the seeder logs an INFO when an
+instance is created without an explicit setting.
+
+### Changing DEFAULT_MOD_PACK after first run
+
+`DEFAULT_MOD_PACK` is applied **on first run only** — changing the env later does nothing (and
+`down -v` to force a re-seed destroys cluster data). Instead, reassign the pack live:
+
+```bash
+docker exec clusterio-controller npx clusterioctl \
+  --config /clusterio/tokens/config-control.json \
+  instance config set <instance> factorio.mod_pack <pack-name-or-id>
+```
+
+(Repeat per instance; `mod-pack list` shows names and ids.)
+
+### Two clusters on one machine collide
+
+Ports, container names, and **external volume names** are global to the Docker host. See
+[docs/multi-cluster.md](docs/multi-cluster.md) for the four collision surfaces and the `.env`
+knobs (`HOST1_PORTS`, `HOST2_PORTS`, `FACTORIO_CLIENT_VOLUME`).
 
 ---
 

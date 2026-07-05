@@ -169,6 +169,14 @@ seed_instance() {
     apply_instance_config "$instance_name" "${instance_dir}instance.json"
   fi
 
+  # auto_pause foot-gun visibility: a headless server with Factorio's default
+  # auto_pause=true pauses at 0 players, silently freezing on_tick plugin
+  # pipelines while RCON keeps answering. Not enforced (game semantics belong
+  # to the consumer) — but made visible (docs/seed-data.md).
+  if [ ! -f "${instance_dir}instance.json" ] || ! grep -q '"auto_pause"' "${instance_dir}instance.json"; then
+    echo "      INFO: '$instance_name' has no explicit auto_pause setting — headless servers pause at 0 players, freezing on_tick plugins (see docs/seed-data.md)"
+  fi
+
   # Upload save files (.zip)
   for save_file in "${instance_dir}"*.zip; do
     if [ -f "$save_file" ]; then

@@ -202,12 +202,19 @@ docker exec clusterio-host-1 cat /clusterio/data/instances/MyInstance/instance.j
     "description": "A Factorio server",
     "visibility": { "public": true, "lan": true },
     "max_players": 100,
-    "auto_pause": true
+    "auto_pause": false
   },
   "global_chat.load_plugin": true,
   "research_sync.load_plugin": false
 }
 ```
+
+> **`auto_pause` foot-gun**: a headless server with `auto_pause: true` (Factorio's default)
+> **pauses at 0 connected players** — which silently freezes every `on_tick`-driven plugin
+> pipeline while RCON keeps answering, so everything *looks* alive. Both known production
+> consumers of these images independently discovered this and bake `auto_pause: false` into
+> their seeds. If any plugin does asynchronous on-tick work, set it `false` explicitly (the
+> seeder logs an INFO when an instance is created without it).
 
 ### Skipped Fields
 
