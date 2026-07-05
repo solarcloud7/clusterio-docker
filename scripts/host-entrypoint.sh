@@ -124,14 +124,21 @@ report_factorio_versions "$FACTORIO_DIR"
 # The true fix (loud failure in Clusterio core) is tracked upstream.
 # ----------------------------------------------------------------------------
 CONTROL_CONFIG="${CONTROL_CONFIG:-$TOKENS_DIR/config-control.json}"
+# The shared control config is CONTROLLER-LOCAL: create-ctl-config bakes
+# controller_url=http://localhost:8080/, which from a host container points at
+# the host itself — and clusterioctl HANGS on it rather than refusing (#24's
+# second root cause). The guard derives a host-reachable copy using the same
+# CONTROLLER_URL this entrypoint configures clusteriohost with.
+GUARD_CTL_CONFIG="$DATA_DIR/.guard-control.json"
+GUARD_CONTROLLER_URL="${CONTROLLER_URL:-http://clusterio-controller:${CONTROLLER_HTTP_PORT:-8080}/}"
 GUARD_LOG="$DATA_DIR/boot-race-guard.log"
 
 ctl_ro() {
     # Hard-bounded: clusterioctl has no client-side timeout and HANGS indefinitely
-    # against a reachable-but-mid-boot controller (root cause of #24 — the guard's
-    # first host-list call froze forever, so neither progress nor the deadline
-    # message ever appeared). timeout's exit 124 just makes the poll loops iterate.
-    timeout -k 5 25 gosu clusterio npx clusterioctl --log-level error "$@" --config "$CONTROL_CONFIG" 2>/dev/null
+    # against an unreachable or mid-boot controller (#24 — the guard's first
+    # host-list call froze forever, so neither progress nor the deadline message
+    # ever appeared). timeout's exit 124 just makes the poll loops iterate.
+    timeout -k 5 25 gosu clusterio npx clusterioctl --log-level error "$@" --config "$GUARD_CTL_CONFIG" 2>/dev/null
 }
 
 # Guard messages go to BOTH stdout and a file: if stdout capture ever fails,
@@ -154,7 +161,16 @@ boot_race_guard() {
         fi
         sleep 5
     done
-    guard_log "control config present — waiting for controller to report this host connected"
+    if ! node -e '
+        const fs = require("fs");
+        const c = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
+        c["control.controller_url"] = process.argv[3];
+        fs.writeFileSync(process.argv[2], JSON.stringify(c, null, "\t"));
+    ' "$CONTROL_CONFIG" "$GUARD_CTL_CONFIG" "$GUARD_CONTROLLER_URL" 2>/dev/null; then
+        guard_log "could not derive a host-reachable control config — skipping"
+        return 0
+    fi
+    guard_log "control config present (rewritten controller_url -> $GUARD_CONTROLLER_URL) — waiting for controller to report this host connected"
     until ctl_ro host list | awk -F'|' -v n="$HOST_NAME" \
         'function t(s){gsub(/^ +| +$/,"",s);return s} NR>2 && t($2)==n && t($4)=="true"{ok=1} END{exit !ok}'; do
         if [ "$SECONDS" -ge "$deadline" ]; then
