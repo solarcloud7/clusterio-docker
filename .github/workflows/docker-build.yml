@@ -57,6 +57,12 @@ jobs:
         id: clusterio_version
         run: echo "version=$(sed -nE 's/^ARG CLUSTERIO_VERSION=([^[:space:]]+).*/\1/p' Dockerfile.host | head -1)" >> "$GITHUB_OUTPUT"
 
+      - name: Assert README version references match Dockerfile
+        run: |
+          V="${{ steps.clusterio_version.outputs.version }}"
+          grep -q "$V" README.md \
+            || { echo "README is out of date: no reference to Clusterio $V (badge/tag examples). Update README.md alongside the CLUSTERIO_VERSION bump."; exit 1; }
+
       - name: Extract metadata for Controller
         id: meta-controller
         uses: docker/metadata-action@v5
@@ -69,9 +75,11 @@ jobs:
             type=semver,pattern={{major}}.{{minor}}
             type=raw,value=latest,enable={{is_default_branch}}
             type=raw,value=${{ steps.clusterio_version.outputs.version }},enable={{is_default_branch}}
+            type=raw,value=${{ github.ref_name }}-clusterio-${{ steps.clusterio_version.outputs.version }},enable=${{ github.event_name != 'pull_request' }}
           labels: |
             org.opencontainers.image.title=Clusterio Controller
             org.opencontainers.image.description=Clusterio cluster controller with web UI and API
+            io.clusterio.version=${{ steps.clusterio_version.outputs.version }}
 
       - name: Extract metadata for Host
         id: meta-host
@@ -85,9 +93,11 @@ jobs:
             type=semver,pattern={{major}}.{{minor}}
             type=raw,value=latest,enable={{is_default_branch}}
             type=raw,value=${{ steps.clusterio_version.outputs.version }},enable={{is_default_branch}}
+            type=raw,value=${{ github.ref_name }}-clusterio-${{ steps.clusterio_version.outputs.version }},enable=${{ github.event_name != 'pull_request' }}
           labels: |
             org.opencontainers.image.title=Clusterio Host
             org.opencontainers.image.description=Clusterio host with Factorio headless server
+            io.clusterio.version=${{ steps.clusterio_version.outputs.version }}
 
       - name: Build and push Controller image
         uses: docker/build-push-action@v5
@@ -97,7 +107,9 @@ jobs:
           push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ steps.meta-controller.outputs.tags }}
           labels: ${{ steps.meta-controller.outputs.labels }}
-          build-args: CLUSTERIO_TARGET=${{ env.CLUSTERIO_TARGET }}
+          build-args: |
+            CLUSTERIO_TARGET=${{ env.CLUSTERIO_TARGET }}
+            BUILD_REVISION=${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -109,7 +121,9 @@ jobs:
           push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ steps.meta-host.outputs.tags }}
           labels: ${{ steps.meta-host.outputs.labels }}
-          build-args: CLUSTERIO_TARGET=${{ env.CLUSTERIO_TARGET }}
+          build-args: |
+            CLUSTERIO_TARGET=${{ env.CLUSTERIO_TARGET }}
+            BUILD_REVISION=${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -176,13 +190,15 @@ jobs:
           else
             echo 'CLUSTERIO_TARGET=release' >> .env
           fi
-          docker compose build
+          # The base compose is consumer-first (image: only); builds live in the dev overlay.
+          docker compose -f docker-compose.yml -f docker-compose.dev.yml build
 
       - name: Create external volumes
         run: docker volume create factorio-client
 
       - name: Start services
-        run: docker compose up -d
+        # Dev overlay included so `up` uses the locally-built images, never pulls.
+        run: docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d
 
       - name: Wait for controller health
         run: |

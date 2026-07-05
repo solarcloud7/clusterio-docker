@@ -393,7 +393,7 @@ Set `"instance.auto_start": false` to prevent auto-starting after seeding.
 ### 7. DEFAULT_MOD_PACK and DLC Mods
 **Symptom**: Instances start without DLC mods (Space Age, etc.) or export-data is missing DLC assets
 **Cause**: `DEFAULT_MOD_PACK` was set to `"Base Game 2.1"` (no DLC)
-**Fix**: Set `DEFAULT_MOD_PACK=Space Age 2.1` in controller env. If the name contains "Space Age", the entrypoint automatically enables the `space-age`, `elevated-rails`, and `quality` builtin mods when creating the pack. If the name doesn't match an existing pack, it's created automatically using `DEFAULT_FACTORIO_VERSION`. Requires volume wipe + redeploy (mod pack is set on first run only).
+**Fix**: Set `DEFAULT_MOD_PACK=Space Age 2.1` in controller env. If the name contains "Space Age", the entrypoint automatically enables the `space-age`, `elevated-rails`, `quality`, and `recycler` builtin mods when creating the pack (recycler is a hard dependency of space-age + quality in 2.1.x). If the name doesn't match an existing pack, it's created automatically using `DEFAULT_FACTORIO_VERSION`. Requires volume wipe + redeploy (mod pack is set on first run only).
 
 ### 8. INSTALL_FACTORIO_CLIENT Credentials Exposed in Image History
 **Symptom**: `docker history` reveals Factorio account credentials

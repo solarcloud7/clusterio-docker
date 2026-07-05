@@ -147,11 +147,14 @@ if [ -z "$MOD_PACK_ID" ] && { [ "$FIRST_RUN" = true ] || [ ! -f "$SEED_MARKER" ]
   fi
 
   # Enable DLC mods if the pack name contains "Space Age" (Clusterio creates
-  # builtin DLC mods as disabled by default — this enables them explicitly)
+  # builtin DLC mods as disabled by default — this enables them explicitly).
+  # recycler is included because space-age + quality hard-depend on it in
+  # Factorio 2.1.x; without it the save fails to load and every consumer ends
+  # up patching this list downstream.
   if [ -n "$MOD_PACK_ID" ] && echo "$DEFAULT_MOD_PACK" | grep -qi "space.age"; then
-    echo "  Enabling DLC mods (space-age, elevated-rails, quality)..."
+    echo "  Enabling DLC mods (space-age, elevated-rails, quality, recycler)..."
     gosu clusterio npx clusterioctl --log-level error mod-pack edit "$MOD_PACK_ID" \
-      --enable-mods space-age elevated-rails quality \
+      --enable-mods space-age elevated-rails quality recycler \
       --config "$CONTROL_CONFIG" 2>/dev/null
   fi
 fi

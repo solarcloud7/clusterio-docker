@@ -1,0 +1,53 @@
+# ============================================================================
+# Development overlay — adds build contexts so compose BUILDS the images
+# locally instead of pulling from GHCR. The base docker-compose.yml is
+# consumer-first (image: only); this file is where source builds live.
+#
+# Usage:
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml build
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d
+#
+# CLUSTERIO_TARGET (set in .env):
+#   release — install @clusterio/* from npm at CLUSTERIO_VERSION (default)
+#   custom  — build from a local Clusterio monorepo checkout at ./clusterio/
+#             (clone your fork there first; used for core development)
+#
+# Built images are tagged with the same GHCR names as the base file, so a
+# local build transparently overrides the pulled image for `up`.
+# ============================================================================
+
+services:
+  clusterio-controller:
+    build:
+      context: .
+      dockerfile: Dockerfile.controller
+      args:
+        CONTROLLER_HTTP_PORT: ${CONTROLLER_HTTP_PORT:-8080}
+        CLUSTERIO_TARGET: ${CLUSTERIO_TARGET:-release}
+
+  clusterio-host-1:
+    build:
+      context: .
+      dockerfile: Dockerfile.host
+      args:
+        FACTORIO_HEADLESS_TAG: stable
+        CLUSTERIO_TARGET: ${CLUSTERIO_TARGET:-release}
+        # Uncomment to bake the full game client into host-1's image for
+        # Clusterio export-data (graphical asset export). Alternatively, set
+        # FACTORIO_USERNAME/TOKEN as runtime env vars for on-demand download.
+        # SECURITY: build args appear in `docker history` — prefer BuildKit
+        # secrets (see Dockerfile.host) and NEVER push a client-baked image.
+        # INSTALL_FACTORIO_CLIENT: "true"
+        # FACTORIO_CLIENT_BUILD: expansion   # "alpha" = base game, "expansion" = Space Age
+        # FACTORIO_CLIENT_TAG: stable
+        # FACTORIO_CLIENT_USERNAME: ${FACTORIO_USERNAME}
+        # FACTORIO_CLIENT_TOKEN: ${FACTORIO_TOKEN}
+        # FACTORIO_CLIENT_SHA256:
+
+  clusterio-host-2:
+    build:
+      context: .
+      dockerfile: Dockerfile.host
+      args:
+        FACTORIO_HEADLESS_TAG: stable
+        CLUSTERIO_TARGET: ${CLUSTERIO_TARGET:-release}
