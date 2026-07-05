@@ -23,6 +23,10 @@ Factorio versions when they change.
   push). The `'*'` push filter's no-slash behavior is now documented as
   intentional in CONTRIBUTING. Issue templates added (`.github/ISSUE_TEMPLATE`)
   codifying the Problem/Evidence/Acceptance format.
+- Controller entrypoint: DLC-mod enabling is now **non-fatal but loud** — a
+  core without one of the builtins (e.g. `recycler` on pre-alpha.26) previously
+  crash-looped the whole controller under `set -e`; now it logs a WARNING and
+  the cluster comes up (pack fixable via `mod-pack edit`).
 - Host entrypoint: **boot-race guard** — once the controller reports the host
   connected, any instance that auto-started *before* the handshake
   (`startedAtMs` < handshake time) is restarted once so its plugins register.

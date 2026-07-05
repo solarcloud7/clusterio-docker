@@ -153,9 +153,15 @@ if [ -z "$MOD_PACK_ID" ] && { [ "$FIRST_RUN" = true ] || [ ! -f "$SEED_MARKER" ]
   # up patching this list downstream.
   if [ -n "$MOD_PACK_ID" ] && echo "$DEFAULT_MOD_PACK" | grep -qi "space.age"; then
     echo "  Enabling DLC mods (space-age, elevated-rails, quality, recycler)..."
+    # Non-fatal but loud: under `set -e` a failing enable (e.g. an older core
+    # without the `recycler` builtin) would otherwise crash-loop the whole
+    # controller. A pack missing a DLC mod is recoverable; a dead controller
+    # is not. (Found the hard way: an alpha.25-era custom build did exactly
+    # this and the container restart-looped until compose gave up.)
     gosu clusterio npx clusterioctl --log-level error mod-pack edit "$MOD_PACK_ID" \
       --enable-mods space-age elevated-rails quality recycler \
-      --config "$CONTROL_CONFIG" 2>/dev/null
+      --config "$CONTROL_CONFIG" 2>/dev/null \
+      || echo "  WARNING: enabling DLC mods failed (core too old for one of them?) — pack '$DEFAULT_MOD_PACK' may need manual mod-pack edit" >&2
   fi
 fi
 
