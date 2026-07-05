@@ -48,6 +48,15 @@ side-effect:
 | `:2.0.0-alpha.26` | bundled Clusterio version (default branch builds) | stable per Clusterio release |
 | `:latest` | default branch's latest build | moves |
 
+> **What the `factorio-*` axis means**: these images bundle **no Factorio bits** (see licensing
+> note below — the host downloads the mod-pack's target *headless* version at runtime; the full
+> client is never downloaded by Clusterio and can only be baked at build time with credentials via
+> `INSTALL_FACTORIO_CLIENT`, and such images must stay private). So `factorio-2.1.8` denotes the
+> **configuration/compatibility target** — entrypoint defaults, seeded mod pack, DLC enable list
+> (e.g. `recycler` is a 2.1.x-specific dependency), and the Factorio version CI tests against —
+> not baked game content. The **Clusterio version is the content-bearing half** of the pair tag,
+> which is why `BUILD_INFO` records `clusterioVersion` and has no `factorioVersion` field.
+
 Every image also carries the label `io.clusterio.version` (readable via
 `docker inspect -f '{{index .Config.Labels "io.clusterio.version"}}' <image>`) and a
 **`/clusterio/BUILD_INFO`** file (`clusterioVersion`, `clusterioTarget`, `gitSha`, `builtAt`) so
