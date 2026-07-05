@@ -29,6 +29,7 @@ Docker images for running [Clusterio](https://github.com/clusterio/clusterio) - 
 - [Asset Export — game client & export-data](docs/asset-export.md)
 - [Plugin Development guide](docs/plugin-development.md)
 - [Multi-cluster machines](docs/multi-cluster.md)
+- [Clusterio engineering notes](docs/clusterio-engineering-notes.md)
 - [Architecture](#architecture)
 - [Troubleshooting](#troubleshooting)
 - [Building Locally](#building-locally)
