@@ -1,6 +1,17 @@
 # Clusterio Docker
 
+[![Docker Build](https://github.com/solarcloud7/clusterio-docker/actions/workflows/docker-build.yml/badge.svg)](https://github.com/solarcloud7/clusterio-docker/actions/workflows/docker-build.yml)
+[![Clusterio](https://img.shields.io/badge/clusterio-2.0.0--alpha.26-blue)](https://www.npmjs.com/package/@clusterio/controller)
+[![Controller image](https://img.shields.io/badge/ghcr.io-controller-24292f?logo=github)](https://github.com/solarcloud7/clusterio-docker/pkgs/container/clusterio-docker-controller)
+[![Host image](https://img.shields.io/badge/ghcr.io-host-24292f?logo=github)](https://github.com/solarcloud7/clusterio-docker/pkgs/container/clusterio-docker-host)
+
 Docker images for running [Clusterio](https://github.com/clusterio/clusterio) - a clustered Factorio server manager.
+
+> **Consume, don't build.** `docker compose up -d` **pulls the prebuilt GHCR images** — you do
+> not need to build anything to run a cluster. Building from source is a development activity
+> (see [Building Locally](#building-locally)). **Agents/automation**: use the prebuilt images;
+> do not build from source unless you are developing this repository itself.
+> *(The Clusterio version badge above is CI-verified against the Dockerfiles on every build.)*
 
 ## Table of Contents
 
@@ -501,11 +512,22 @@ docker logs clusterio-host-1
 
 ## Building Locally
 
-```bash
-# Build both images
-docker compose build
+The base `docker-compose.yml` is consumer-first — it **pulls** images and contains no build
+configuration. Source builds live in the `docker-compose.dev.yml` overlay:
 
-# Build individually
+```bash
+# Build both images from source (release target = @clusterio/* from npm)
+docker compose -f docker-compose.yml -f docker-compose.dev.yml build
+
+# Run what you built (local build overrides the pulled image name)
+docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d
+
+# Core development: build from a local Clusterio monorepo checkout instead of npm
+#   1. clone your clusterio fork to ./clusterio/
+#   2. set CLUSTERIO_TARGET=custom in .env
+#   3. build with the overlay as above
+
+# Build individually (without compose)
 docker build -f Dockerfile.controller -t clusterio-controller .
 docker build -f Dockerfile.host -t clusterio-host .
 ```

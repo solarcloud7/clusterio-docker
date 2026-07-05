@@ -57,6 +57,12 @@ jobs:
         id: clusterio_version
         run: echo "version=$(sed -nE 's/^ARG CLUSTERIO_VERSION=([^[:space:]]+).*/\1/p' Dockerfile.host | head -1)" >> "$GITHUB_OUTPUT"
 
+      - name: Assert README version references match Dockerfile
+        run: |
+          V="${{ steps.clusterio_version.outputs.version }}"
+          grep -q "$V" README.md \
+            || { echo "README is out of date: no reference to Clusterio $V (badge/tag examples). Update README.md alongside the CLUSTERIO_VERSION bump."; exit 1; }
+
       - name: Extract metadata for Controller
         id: meta-controller
         uses: docker/metadata-action@v5
@@ -184,13 +190,15 @@ jobs:
           else
             echo 'CLUSTERIO_TARGET=release' >> .env
           fi
-          docker compose build
+          # The base compose is consumer-first (image: only); builds live in the dev overlay.
+          docker compose -f docker-compose.yml -f docker-compose.dev.yml build
 
       - name: Create external volumes
         run: docker volume create factorio-client
 
       - name: Start services
-        run: docker compose up -d
+        # Dev overlay included so `up` uses the locally-built images, never pulls.
+        run: docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d
 
       - name: Wait for controller health
         run: |

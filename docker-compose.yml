@@ -1,6 +1,14 @@
 # ============================================================================
 # Clusterio Docker Compose Configuration
 # ============================================================================
+# CONSUMES PREBUILT IMAGES from GHCR by default — `docker compose up -d` pulls,
+# it does not build. To build from source instead (development), layer the dev
+# overlay:  docker compose -f docker-compose.yml -f docker-compose.dev.yml build
+#
+# Pin a specific image build by setting CLUSTERIO_IMAGE_TAG in .env — for
+# production prefer the immutable pair tag (e.g.
+# factorio-2.1.8-clusterio-2.0.0-alpha.26); the default branch tag moves.
+#
 # To add more hosts:
 #   1. Increment HOST_COUNT in controller environment
 #   2. Copy a host service block and change:
@@ -18,15 +26,7 @@
 
 # Template anchor for host services (reduces duplication)
 x-host-base: &host-base
-  build:
-    context: .
-    dockerfile: Dockerfile.host
-    args:
-      FACTORIO_HEADLESS_TAG: stable
-      # FACTORIO_HEADLESS_SHA256:
-      # CURL_RETRIES: 8
-      # Custom Clusterio build from local source (clone fork to clusterio/):
-      CLUSTERIO_TARGET: ${CLUSTERIO_TARGET:-custom}
+  image: ghcr.io/solarcloud7/clusterio-docker-host:${CLUSTERIO_IMAGE_TAG:-factorio-2.1.8}
   env_file:
     - .env
   networks:
@@ -40,13 +40,7 @@ x-host-base: &host-base
 
 services:
   clusterio-controller:
-    build:
-      context: .
-      dockerfile: Dockerfile.controller
-      args:
-        CONTROLLER_HTTP_PORT: ${CONTROLLER_HTTP_PORT:-8080}
-        # Custom Clusterio build from local source (clone fork to clusterio/):
-        CLUSTERIO_TARGET: ${CLUSTERIO_TARGET:-custom}
+    image: ghcr.io/solarcloud7/clusterio-docker-controller:${CLUSTERIO_IMAGE_TAG:-factorio-2.1.8}
     env_file:
       - .env
     container_name: clusterio-controller
@@ -74,26 +68,11 @@ services:
 
   # -------------------------------------------------------------------------
   # Host 1 - Port range 34100-34199 - Full game client (graphical asset export)
+  # Runtime client download: set FACTORIO_USERNAME/TOKEN env vars. Baking the
+  # client into the image is a dev-overlay concern (see docker-compose.dev.yml).
   # -------------------------------------------------------------------------
   clusterio-host-1:
     <<: *host-base
-    build:
-      context: .
-      dockerfile: Dockerfile.host
-      args:
-        FACTORIO_HEADLESS_TAG: stable
-        # Uncomment to bake the full game client into host-1's image for
-        # Clusterio export-data (graphical asset export). Alternatively, set
-        # FACTORIO_USERNAME/TOKEN as runtime env vars for on-demand download.
-        # SECURITY: build args appear in `docker history`.
-        # INSTALL_FACTORIO_CLIENT: "true"
-        # FACTORIO_CLIENT_BUILD: expansion   # "alpha" = base game, "expansion" = Space Age
-        # FACTORIO_CLIENT_TAG: stable
-        # FACTORIO_CLIENT_USERNAME: ${FACTORIO_USERNAME}
-        # FACTORIO_CLIENT_TOKEN: ${FACTORIO_TOKEN}
-        # FACTORIO_CLIENT_SHA256:
-        # Custom Clusterio build from local source (clone fork to clusterio/):
-        CLUSTERIO_TARGET: ${CLUSTERIO_TARGET:-custom}
     container_name: clusterio-host-1
     hostname: clusterio-host-1
     environment:
@@ -153,4 +132,3 @@ volumes:
   shared-tokens:      # Token exchange between controller and hosts
   factorio-client:    # Factorio game client (persists across `down -v`)
     external: true
-  
