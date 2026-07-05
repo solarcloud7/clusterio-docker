@@ -330,7 +330,7 @@ jobs:
             && echo "PASS: export-data completed successfully" \
             || { echo "FAIL: export-data failed"; exit 1; }
 
-      - name: Verify idempotent restart
+      - name: Verify idempotent restart + boot-race guard
         run: |
           echo "=== Restart and verify no duplicate seeding ==="
           docker compose restart
@@ -342,6 +342,25 @@ jobs:
           [ "$INSTANCE_COUNT" -le 2 ] \
             && echo "PASS: No duplicate instances after restart" \
             || { echo "FAIL: Duplicate instances detected"; exit 1; }
+
+          echo "=== Boot-race guard completed on both hosts (2nd run = post-restart) ==="
+          for h in clusterio-host-1 clusterio-host-2; do
+            timeout 330 bash -c "until [ \"\$(docker logs $h 2>&1 | grep -c 'boot-race guard: complete')\" -ge 2 ]; do sleep 5; done" \
+              && echo "PASS: guard completed on $h after restart" \
+              || { echo "FAIL: guard did not complete on $h after restart"
+                   echo "--- stdout tail ---"; docker logs "$h" 2>&1 | tail -30
+                   echo "--- guard file log (discriminator: absent = never launched; present = stdout lost) ---"
+                   docker exec "$h" cat /clusterio/data/boot-race-guard.log 2>/dev/null || echo "(no guard log file)"
+                   exit 1; }
+            docker logs "$h" 2>&1 | grep "boot-race guard:" | tail -4
+          done
+
+          echo "=== TestInstance running after restart (guard bounces it if it raced) ==="
+          timeout 180 bash -c 'until docker exec clusterio-controller npx clusterioctl \
+            --config /clusterio/tokens/config-control.json \
+            instance list 2>/dev/null | grep "TestInstance" | grep -q "running"; do sleep 5; done' \
+            && echo "PASS: TestInstance running after restart" \
+            || { echo "FAIL: TestInstance not running after restart"; exit 1; }
 
       - name: Show logs on failure
         if: failure()

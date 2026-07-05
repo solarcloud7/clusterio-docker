@@ -445,8 +445,16 @@ start the entrypoint (`scripts/install-plugins.sh`):
 Instance plugins are only loaded if the plugin is present in the controller's WebSocket `hello`
 when the instance starts. If an instance **auto-starts before its host finishes the controller
 handshake** (e.g. right after `docker compose up -d` or a host container restart), instance
-plugins can be **silently skipped — no error, IPC just goes nowhere**. Recommended consumer
-protocol after any container (re)start:
+plugins can be **silently skipped — no error, IPC just goes nowhere**.
+
+**The host entrypoint now guards this automatically**: once the controller reports the host
+connected, a background **boot-race guard** restarts any instance that started *before* the
+handshake (detected via `startedAtMs`), so its plugins register. Healthy boots are untouched.
+Look for `boot-race guard:` lines in the host's `docker logs`.
+
+The manual protocol below still applies to **standalone hosts** (no shared tokens volume — the
+guard needs `config-control.json` and skips without it), and remains sound belt-and-suspenders
+after any deploy:
 
 1. Wait for controller and host containers to be healthy.
 2. `clusterioctl instance stop <name>` then `instance start <name>`.
