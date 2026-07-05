@@ -13,6 +13,11 @@ Factorio versions when they change.
 
 ## 2026-07-05
 
+- CI: **pre-merge validation for release-branch PRs** — `pull_request` now also
+  triggers on PRs into `factorio-*` branches (build + full test suite, no image
+  push). The `'*'` push filter's no-slash behavior is now documented as
+  intentional in CONTRIBUTING. Issue templates added (`.github/ISSUE_TEMPLATE`)
+  codifying the Problem/Evidence/Acceptance format.
 - CI: **changelog gate** (this file) — image-affecting pushes without a change
   notice now fail the build; top entry is published to every run summary.
 - Consumer-first compose: `docker compose up -d` now **pulls prebuilt GHCR
