@@ -41,4 +41,8 @@ the images.
 
 - Keep changes focused and update docs (README / CLAUDE.md / `docs/`) when
   behavior changes.
+- Any change to image-affecting files (`Dockerfile.*`, `scripts/`,
+  `docker-compose*.yml`, workflows) must include a `CHANGELOG.md` entry — CI's
+  **changelog gate** fails the push build without one, and the top entry is
+  published to the build's run summary.
 - Don't commit secrets — see [SECURITY.md](SECURITY.md).

@@ -22,6 +22,26 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # full history: the changelog gate diffs the pushed range
+
+      - name: Changelog gate — image changes must carry a change notice
+        if: github.event_name == 'push' && github.event.before != '0000000000000000000000000000000000000000'
+        run: |
+          BEFORE="${{ github.event.before }}"
+          if ! git cat-file -e "$BEFORE" 2>/dev/null; then
+            echo "Base commit $BEFORE unavailable (force push?) — skipping changelog gate."
+            exit 0
+          fi
+          CHANGED=$(git diff --name-only "$BEFORE" "${{ github.sha }}")
+          printf 'Changed files in push:\n%s\n' "$CHANGED"
+          if printf '%s\n' "$CHANGED" | grep -qE '^(Dockerfile\.(controller|host)|scripts/|docker-compose[^/]*\.ya?ml$|\.github/workflows/)'; then
+            if ! printf '%s\n' "$CHANGED" | grep -qx 'CHANGELOG.md'; then
+              echo "::error file=CHANGELOG.md::This push changes image-affecting files but adds no change notice. Add an entry to CHANGELOG.md (format in its header) and push again."
+              exit 1
+            fi
+          fi
+          echo "Changelog gate OK."
 
       - name: Clone Clusterio fork (non-main branch pushes)
         if: github.event_name == 'push' && github.ref != 'refs/heads/main' && !startsWith(github.ref, 'refs/tags/')
@@ -126,6 +146,15 @@ jobs:
             BUILD_REVISION=${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+      - name: Publish change notice to run summary
+        if: github.event_name == 'push'
+        run: |
+          {
+            echo "## Change notice (CHANGELOG.md, top entry)"
+            echo
+            awk '/^## /{n++} n==1' CHANGELOG.md
+          } >> "$GITHUB_STEP_SUMMARY"
 
   # Test the built images
   test:
