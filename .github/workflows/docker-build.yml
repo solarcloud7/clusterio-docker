@@ -2,10 +2,13 @@ name: Build and Push Docker Images
 
 on:
   push:
+    # NOTE: '*' deliberately does NOT match slash-named branches (feat/..., docs/...) —
+    # GitHub's single-star stops at '/'. That keeps feature branches from publishing
+    # image tags. Pre-merge validation for release branches comes from pull_request below.
     branches: ['*']
     tags: ['v*']
   pull_request:
-    branches: [main]
+    branches: [main, 'factorio-*']
 
 env:
   REGISTRY: ghcr.io
