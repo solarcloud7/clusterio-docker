@@ -22,10 +22,16 @@ guide is for writing one.
 
 1. **`@clusterio/*` must be peerDependencies, never dependencies.** Clusterio fatally rejects a
    duplicate `@clusterio/lib` — one vendored copy crashes every `clusterioctl` invocation
-   cluster-wide. The entrypoint strips stray copies at boot as a backstop, but npm 7+
-   auto-installs peer deps on a workstation `npm install`, so keep your host-side dev types in a
-   directory *above* the plugin (they resolve via Node's upward walk) and never run a bare
-   install inside the mounted plugin dir.
+   cluster-wide. The entrypoint strips stray copies **on every boot** as a backstop (look for
+   "Removing local @clusterio packages" in logs), but npm 7+ auto-installs peer deps on a
+   workstation `npm install`, so also ship a plugin-level `.npmrc` with
+   `legacy-peer-deps=true` and keep your host-side dev types in a directory *above* the plugin
+   (they resolve via Node's upward walk). Two proven workstation patterns from production
+   consumers: **repo-root devDeps** (the `@clusterio` types live in a parent `package.json`
+   that is never mounted into containers — clustorio-atlas), or **isolated-container builds**
+   (build in a throwaway node container with a named volume shadowing `node_modules` —
+   FactorioSurfaceExport's `build-plugin.ps1`). Never run a bare install inside the mounted
+   plugin dir.
 2. **Node plugin code is cached by the long-lived host process.** An `instance stop/start`
    re-patches the save-embedded **Lua** module but does **not** reload plugin **Node** code —
    the require cache keeps serving the old build (and it will even log "plugin initialized").

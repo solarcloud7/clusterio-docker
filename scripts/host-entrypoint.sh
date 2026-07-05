@@ -89,6 +89,14 @@ else
     echo "No game client present — using headless directory $FACTORIO_DIR (auto-update enabled)"
 fi
 
+# Config-contradiction guard: EXPORT_HOST designates a host to run export-data,
+# which needs the full game client — SKIP_CLIENT=true on that same host
+# guarantees blank web-UI icons via a distant, confusing failure. Warn at the
+# source instead (docs/asset-export.md).
+if [ "${EXPORT_HOST:-0}" = "$HOST_ID" ] && [ "${SKIP_CLIENT:-false}" = "true" ]; then
+  echo "WARNING: EXPORT_HOST=$EXPORT_HOST designates THIS host ($HOST_NAME) for export-data, but SKIP_CLIENT=true forces headless — export will fail and web-UI icons will be blank (docs/asset-export.md)" >&2
+fi
+
 # Diagnostic: report which Factorio version(s) are present in the resolved directory. Clusterio
 # resolves the Factorio binary by version, so a mismatch between what is installed here and an
 # instance's pinned `factorio.version` is a common — and otherwise hard to diagnose — cause of
