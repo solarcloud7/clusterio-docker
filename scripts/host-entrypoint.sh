@@ -110,6 +110,63 @@ report_factorio_versions() {
 }
 report_factorio_versions "$FACTORIO_DIR"
 
+# ----------------------------------------------------------------------------
+# Boot-race guard.
+# An instance that auto-starts before this host completes its controller
+# handshake silently skips instance plugins — no error, IPC just goes nowhere
+# (README: "Operational note: the instance/plugin boot race"). This guard
+# mechanizes the manual stop/start protocol: once the controller reports this
+# host connected, it restarts any of this host's instances whose startedAtMs
+# PREDATES the handshake. Instances started after (e.g. by first-run seeding)
+# are untouched, so healthy boots are a no-op — the bounce is surgical.
+# Requires the shared tokens volume (config-control.json); standalone hosts
+# without it skip quietly and the manual protocol still applies.
+# The true fix (loud failure in Clusterio core) is tracked upstream.
+# ----------------------------------------------------------------------------
+CONTROL_CONFIG="${CONTROL_CONFIG:-$TOKENS_DIR/config-control.json}"
+
+ctl_ro() {
+    gosu clusterio npx clusterioctl --log-level error "$@" --config "$CONTROL_CONFIG" 2>/dev/null
+}
+
+boot_race_guard() {
+    local deadline=180 elapsed=0 T inst w
+    while [ ! -f "$CONTROL_CONFIG" ]; do
+        if [ "$elapsed" -ge "$deadline" ]; then
+            echo "boot-race guard: no control config after ${deadline}s (standalone host?) — skipping"
+            return 0
+        fi
+        sleep 5; elapsed=$((elapsed + 5))
+    done
+    until ctl_ro host list | awk -F'|' -v n="$HOST_NAME" \
+        'function t(s){gsub(/^ +| +$/,"",s);return s} NR>2 && t($2)==n && t($4)=="true"{ok=1} END{exit !ok}'; do
+        if [ "$elapsed" -ge "$deadline" ]; then
+            echo "boot-race guard: host never reported connected within ${deadline}s — skipping" >&2
+            return 0
+        fi
+        sleep 5; elapsed=$((elapsed + 5))
+    done
+    T=$(node -e 'console.log(Date.now())')
+    ctl_ro instance list | awk -F'|' -v hid="$HOST_ID" -v T="$T" \
+        'function t(s){gsub(/^ +| +$/,"",s);return s} NR>2 && t($3)==hid && (t($5)=="running"||t($5)=="starting") && t($7)+0>0 && t($7)+0<T {print t($1)}' \
+    | while IFS= read -r inst; do
+        echo "boot-race guard: '$inst' started before the handshake — restarting it so plugins register"
+        ctl_ro instance stop "$inst" || true
+        w=0
+        until ctl_ro instance list | awk -F'|' -v i="$inst" \
+            'function t(s){gsub(/^ +| +$/,"",s);return s} NR>2 && t($1)==i && t($5)=="stopped"{ok=1} END{exit !ok}'; do
+            if [ "$w" -ge 60 ]; then
+                echo "boot-race guard: '$inst' did not stop within 60s — leaving it as-is" >&2
+                break
+            fi
+            sleep 3; w=$((w + 3))
+        done
+        ctl_ro instance start "$inst" || true
+        echo "boot-race guard: '$inst' restarted after handshake"
+    done
+    echo "boot-race guard: complete"
+}
+
 get_token() {
     # Priority 1: Environment variable (for standalone container usage)
     if [ -n "$CLUSTERIO_HOST_TOKEN" ]; then
@@ -156,6 +213,7 @@ if [ -f "$CONFIG_PATH" ]; then
                 gosu clusterio npx clusteriohost --log-level error config set host.factorio_directory "$FACTORIO_DIR" --config "$CONFIG_PATH"
             fi
             echo "Host already configured, starting..."
+            boot_race_guard &
             exec gosu clusterio npx clusteriohost run --config "$CONFIG_PATH"
         fi
     fi
@@ -194,4 +252,5 @@ gosu clusterio npx clusteriohost --log-level error config set host.instances_dir
 gosu clusterio npx clusteriohost --log-level error config set host.factorio_port_range "$FACTORIO_PORT_RANGE" --config "$CONFIG_PATH"
 
 # Start the host
+boot_race_guard &
 exec gosu clusterio npx clusteriohost run --config "$CONFIG_PATH"
