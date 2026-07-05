@@ -211,10 +211,17 @@ RUN printf '{\n  "clusterioVersion": "%s",\n  "clusterioTarget": "%s",\n  "gitSh
       > /clusterio/BUILD_INFO \
     && chown clusterio:clusterio /clusterio/BUILD_INFO
 
+COPY --chmod=755 scripts/stream-logs.sh /scripts/stream-logs.sh
 COPY --chmod=755 scripts/install-plugins.sh /scripts/install-plugins.sh
 COPY --chmod=755 scripts/host-entrypoint.sh /host-entrypoint.sh
 
-HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
-  CMD grep -qa clusteriohost /proc/1/cmdline || exit 1
+# Honest readiness (#20): process up AND connected to the controller — the
+# boot-race guard maintains /run/clusterio-connected once the handshake is
+# confirmed. Degrades to process-only for standalone hosts (no shared tokens
+# volume → no config-control.json → the guard skips, marker never required).
+# start-period covers first boot incl. a possible Factorio download and the
+# guard's own connect window.
+HEALTHCHECK --interval=30s --timeout=10s --start-period=240s --retries=4 \
+  CMD sh -c 'grep -qa clusteriohost /proc/1/cmdline && { [ ! -f /clusterio/tokens/config-control.json ] || [ -f /run/clusterio-connected ]; }' || exit 1
 
 ENTRYPOINT ["/host-entrypoint.sh"]
