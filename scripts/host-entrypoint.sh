@@ -124,47 +124,58 @@ report_factorio_versions "$FACTORIO_DIR"
 # The true fix (loud failure in Clusterio core) is tracked upstream.
 # ----------------------------------------------------------------------------
 CONTROL_CONFIG="${CONTROL_CONFIG:-$TOKENS_DIR/config-control.json}"
+GUARD_LOG="$DATA_DIR/boot-race-guard.log"
 
 ctl_ro() {
     gosu clusterio npx clusterioctl --log-level error "$@" --config "$CONTROL_CONFIG" 2>/dev/null
 }
 
+# Guard messages go to BOTH stdout and a file: if stdout capture ever fails,
+# the file still proves whether (and how far) the guard ran (#24 discriminator).
+guard_log() {
+    echo "boot-race guard: $*"
+    echo "$(date -u +%FT%TZ) $*" >> "$GUARD_LOG" 2>/dev/null || true
+}
+
 boot_race_guard() {
     local deadline=180 elapsed=0 T inst w
+    guard_log "started (pid $$, host $HOST_NAME/$HOST_ID)"
     while [ ! -f "$CONTROL_CONFIG" ]; do
         if [ "$elapsed" -ge "$deadline" ]; then
-            echo "boot-race guard: no control config after ${deadline}s (standalone host?) — skipping"
+            guard_log "no control config after ${deadline}s (standalone host?) — skipping"
             return 0
         fi
         sleep 5; elapsed=$((elapsed + 5))
     done
+    guard_log "control config present — waiting for controller to report this host connected"
     until ctl_ro host list | awk -F'|' -v n="$HOST_NAME" \
         'function t(s){gsub(/^ +| +$/,"",s);return s} NR>2 && t($2)==n && t($4)=="true"{ok=1} END{exit !ok}'; do
         if [ "$elapsed" -ge "$deadline" ]; then
-            echo "boot-race guard: host never reported connected within ${deadline}s — skipping" >&2
+            guard_log "host never reported connected within ${deadline}s — skipping"
             return 0
         fi
         sleep 5; elapsed=$((elapsed + 5))
     done
     T=$(node -e 'console.log(Date.now())')
+    guard_log "handshake confirmed at $T — checking for instances started before it"
     ctl_ro instance list | awk -F'|' -v hid="$HOST_ID" -v T="$T" \
         'function t(s){gsub(/^ +| +$/,"",s);return s} NR>2 && t($3)==hid && (t($5)=="running"||t($5)=="starting") && t($7)+0>0 && t($7)+0<T {print t($1)}' \
     | while IFS= read -r inst; do
-        echo "boot-race guard: '$inst' started before the handshake — restarting it so plugins register"
+        guard_log "'$inst' started before the handshake — restarting it so plugins register"
         ctl_ro instance stop "$inst" || true
         w=0
         until ctl_ro instance list | awk -F'|' -v i="$inst" \
             'function t(s){gsub(/^ +| +$/,"",s);return s} NR>2 && t($1)==i && t($5)=="stopped"{ok=1} END{exit !ok}'; do
             if [ "$w" -ge 60 ]; then
-                echo "boot-race guard: '$inst' did not stop within 60s — leaving it as-is" >&2
+                guard_log "'$inst' did not stop within 60s — leaving it as-is"
                 break
             fi
             sleep 3; w=$((w + 3))
         done
         ctl_ro instance start "$inst" || true
-        echo "boot-race guard: '$inst' restarted after handshake"
+        guard_log "'$inst' restarted after handshake"
     done
-    echo "boot-race guard: complete"
+    guard_log "complete"
 }
 
 get_token() {
