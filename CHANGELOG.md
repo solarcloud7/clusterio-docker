@@ -13,6 +13,12 @@ Factorio versions when they change.
 
 ## 2026-07-05
 
+- **Multi-cluster support**: host-side port publishings (`HOST1_PORTS`,
+  `HOST2_PORTS`) and the external client volume name (`FACTORIO_CLIENT_VOLUME`)
+  are now `.env`-parametrized; new `docs/multi-cluster.md` documents the four
+  collision surfaces. `auto_pause` foot-gun surfaced: docs + example fixed
+  (`false`), seeder logs an INFO when unset. README troubleshooting adds the
+  frozen-plugins entry and the `DEFAULT_MOD_PACK` live-reassign path.
 - CI: **factorio-* PRs now build the custom target** from the fork branch
   matching the PR base — the npm release lags the fork's Factorio-version
   support (empirically: alpha.26 rejects 2.1-format mod `info.json` and lacks
