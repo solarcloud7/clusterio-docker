@@ -348,7 +348,11 @@ jobs:
           TOKEN=ci-bridge-token
 
           echo "=== Bridge refuses to start without token ==="
-          if docker exec clusterio-controller sh -c 'BRIDGE_PORT=8100 BRIDGE_BIND_HOST=127.0.0.1 BRIDGE_CONFIG=/clusterio/tokens/config-control.json node /clusterio/bridge.mjs' >/tmp/bridge-no-token.log 2>&1; then
+          # BRIDGE_TOKEN= is load-bearing: docker exec inherits the container's
+          # env (which HAS the token), so without the explicit blank this spawns
+          # a second, fully-working bridge on 127.0.0.1 that never exits — the
+          # step hangs for hours. timeout 30 is the backstop for that class.
+          if docker exec clusterio-controller sh -c 'BRIDGE_TOKEN= BRIDGE_PORT=8100 BRIDGE_BIND_HOST=127.0.0.1 BRIDGE_CONFIG=/clusterio/tokens/config-control.json timeout 30 node /clusterio/bridge.mjs' >/tmp/bridge-no-token.log 2>&1; then
             echo "FAIL: bridge started without BRIDGE_TOKEN"
             exit 1
           fi
@@ -357,28 +361,28 @@ jobs:
             || { echo "FAIL: missing-token message absent"; cat /tmp/bridge-no-token.log; exit 1; }
 
           echo "=== /health requires auth ==="
-          CODE=$(docker exec clusterio-controller sh -c "curl -sS -o /tmp/bridge-noauth.json -w '%{http_code}' $BRIDGE_URL/health")
+          CODE=$(docker exec clusterio-controller sh -c "curl -sS --max-time 10 -o /tmp/bridge-noauth.json -w '%{http_code}' $BRIDGE_URL/health")
           [ "$CODE" = "401" ] \
             && echo "PASS: /health returns 401 without token" \
             || { echo "FAIL: expected 401, got $CODE"; exit 1; }
 
           echo "=== Wrong token is rejected (exercises the timing-safe compare) ==="
-          WRONG_CODE=$(docker exec clusterio-controller sh -c "curl -sS -o /dev/null -w '%{http_code}' -H 'Authorization: Bearer not-$TOKEN' $BRIDGE_URL/health")
+          WRONG_CODE=$(docker exec clusterio-controller sh -c "curl -sS --max-time 10 -o /dev/null -w '%{http_code}' -H 'Authorization: Bearer not-$TOKEN' $BRIDGE_URL/health")
           [ "$WRONG_CODE" = "401" ] \
             && echo "PASS: wrong token returns 401" \
             || { echo "FAIL: expected 401 for wrong token, got $WRONG_CODE"; exit 1; }
 
           echo "=== /health proves controller round-trip ==="
-          docker exec clusterio-controller sh -c "curl -fsS -H 'Authorization: Bearer $TOKEN' $BRIDGE_URL/health" | grep -q '"status":"ok"' \
+          docker exec clusterio-controller sh -c "curl -fsS --max-time 10 -H 'Authorization: Bearer $TOKEN' $BRIDGE_URL/health" | grep -q '"status":"ok"' \
             && echo "PASS: /health returned ok" \
             || { echo "FAIL: /health did not return ok"; exit 1; }
 
           echo "=== /instances and /hosts return live data ==="
-          INSTANCES=$(docker exec clusterio-controller sh -c "curl -fsS -H 'Authorization: Bearer $TOKEN' $BRIDGE_URL/instances")
+          INSTANCES=$(docker exec clusterio-controller sh -c "curl -fsS --max-time 10 -H 'Authorization: Bearer $TOKEN' $BRIDGE_URL/instances")
           echo "$INSTANCES" | grep -q "TestInstance" \
             && echo "PASS: /instances contains TestInstance" \
             || { echo "FAIL: /instances missing TestInstance"; echo "$INSTANCES"; exit 1; }
-          docker exec clusterio-controller sh -c "curl -fsS -H 'Authorization: Bearer $TOKEN' $BRIDGE_URL/hosts" | grep -q "clusterio-host-1" \
+          docker exec clusterio-controller sh -c "curl -fsS --max-time 10 -H 'Authorization: Bearer $TOKEN' $BRIDGE_URL/hosts" | grep -q "clusterio-host-1" \
             && echo "PASS: /hosts contains clusterio-host-1" \
             || { echo "FAIL: /hosts missing clusterio-host-1"; exit 1; }
 
@@ -387,33 +391,33 @@ jobs:
 
           echo "=== Template command works on running instance ==="
           printf '{"instanceId":%s,"template":"players-online","params":{}}' "$RUNNING_ID" \
-            | docker exec -i clusterio-controller sh -c "curl -fsS -H 'Authorization: Bearer $TOKEN' -H 'content-type: application/json' --data-binary @- $BRIDGE_URL/commands" \
+            | docker exec -i clusterio-controller sh -c "curl -fsS --max-time 10 -H 'Authorization: Bearer $TOKEN' -H 'content-type: application/json' --data-binary @- $BRIDGE_URL/commands" \
             | grep -q '"output"' \
             && echo "PASS: template command returned output" \
             || { echo "FAIL: template command failed"; exit 1; }
 
           echo "=== Unknown and stopped instances return clean 4xx ==="
           UNKNOWN_CODE=$(printf '{"instanceId":999999,"template":"players-online","params":{}}' \
-            | docker exec -i clusterio-controller sh -c "curl -sS -o /tmp/bridge-unknown.json -w '%{http_code}' -H 'Authorization: Bearer $TOKEN' -H 'content-type: application/json' --data-binary @- $BRIDGE_URL/commands")
+            | docker exec -i clusterio-controller sh -c "curl -sS --max-time 10 -o /tmp/bridge-unknown.json -w '%{http_code}' -H 'Authorization: Bearer $TOKEN' -H 'content-type: application/json' --data-binary @- $BRIDGE_URL/commands")
           [ "$UNKNOWN_CODE" = "404" ] \
             && echo "PASS: unknown instance returns 404" \
             || { echo "FAIL: expected 404 for unknown instance, got $UNKNOWN_CODE"; exit 1; }
           STOPPED_CODE=$(printf '{"instanceId":%s,"template":"players-online","params":{}}' "$STOPPED_ID" \
-            | docker exec -i clusterio-controller sh -c "curl -sS -o /tmp/bridge-stopped.json -w '%{http_code}' -H 'Authorization: Bearer $TOKEN' -H 'content-type: application/json' --data-binary @- $BRIDGE_URL/commands")
+            | docker exec -i clusterio-controller sh -c "curl -sS --max-time 10 -o /tmp/bridge-stopped.json -w '%{http_code}' -H 'Authorization: Bearer $TOKEN' -H 'content-type: application/json' --data-binary @- $BRIDGE_URL/commands")
           [ "$STOPPED_CODE" = "409" ] \
             && echo "PASS: stopped instance returns 409" \
             || { echo "FAIL: expected 409 for stopped instance, got $STOPPED_CODE"; exit 1; }
 
           echo "=== Raw RCON disabled by default ==="
           RAW_CODE=$(printf '{"instanceId":%s,"command":"/players online"}' "$RUNNING_ID" \
-            | docker exec -i clusterio-controller sh -c "curl -sS -o /tmp/bridge-raw.json -w '%{http_code}' -H 'Authorization: Bearer $TOKEN' -H 'content-type: application/json' --data-binary @- $BRIDGE_URL/rcon")
+            | docker exec -i clusterio-controller sh -c "curl -sS --max-time 10 -o /tmp/bridge-raw.json -w '%{http_code}' -H 'Authorization: Bearer $TOKEN' -H 'content-type: application/json' --data-binary @- $BRIDGE_URL/rcon")
           [ "$RAW_CODE" = "403" ] \
             && echo "PASS: raw RCON returns 403" \
             || { echo "FAIL: expected 403 for raw RCON, got $RAW_CODE"; exit 1; }
 
           echo "=== Body cap rejects oversized requests ==="
           BIG_CODE=$(node -e 'process.stdout.write(JSON.stringify({ instanceId: Number(process.argv[1]), template: "players-online", params: {}, pad: "x".repeat(9000) }))' "$RUNNING_ID" \
-            | docker exec -i clusterio-controller sh -c "curl -sS -o /tmp/bridge-big.json -w '%{http_code}' -H 'Authorization: Bearer $TOKEN' -H 'content-type: application/json' --data-binary @- $BRIDGE_URL/commands")
+            | docker exec -i clusterio-controller sh -c "curl -sS --max-time 10 -o /tmp/bridge-big.json -w '%{http_code}' -H 'Authorization: Bearer $TOKEN' -H 'content-type: application/json' --data-binary @- $BRIDGE_URL/commands")
           [ "$BIG_CODE" = "413" ] \
             && echo "PASS: oversized request returns 413" \
             || { echo "FAIL: expected 413 for oversized request, got $BIG_CODE"; exit 1; }
@@ -429,7 +433,7 @@ jobs:
           # for up to a minute. The next bridge access is the post-restart probe,
           # which gets a fresh process (in-memory buckets reset).
           echo "=== Rate limit trips within the 60/min window ==="
-          CODES=$(docker exec clusterio-controller sh -c "for i in \$(seq 1 70); do curl -sS -o /dev/null -w '%{http_code}\n' -H 'Authorization: Bearer $TOKEN' $BRIDGE_URL/commands; done")
+          CODES=$(docker exec clusterio-controller sh -c "for i in \$(seq 1 70); do curl -sS --max-time 10 -o /dev/null -w '%{http_code}\n' -H 'Authorization: Bearer $TOKEN' $BRIDGE_URL/commands; done")
           echo "$CODES" | grep -qx '429' \
             && echo "PASS: burst of 70 requests hit 429" \
             || { echo "FAIL: no 429 in a 70-request burst"; echo "$CODES" | sort | uniq -c; exit 1; }
@@ -521,7 +525,7 @@ jobs:
             || { echo "FAIL: Duplicate instances detected"; exit 1; }
 
           echo "=== Bridge survives restart (entrypoint relaunch + signal trap) ==="
-          timeout 120 bash -c "until docker exec clusterio-controller sh -c \"curl -fsS -H 'Authorization: Bearer ci-bridge-token' http://172.31.50.10:8100/health\" 2>/dev/null | grep -q '\"status\":\"ok\"'; do sleep 5; done" \
+          timeout 120 bash -c "until docker exec clusterio-controller sh -c \"curl -fsS --max-time 10 -H 'Authorization: Bearer ci-bridge-token' http://172.31.50.10:8100/health\" 2>/dev/null | grep -q '\"status\":\"ok\"'; do sleep 5; done" \
             && echo "PASS: bridge healthy after restart" \
             || { echo "FAIL: bridge did not come back after restart"; docker logs clusterio-controller 2>&1 | grep -i bridge | tail -20; exit 1; }
 
