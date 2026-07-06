@@ -274,6 +274,16 @@ The GitHub Actions workflow (`.github/workflows/docker-build.yml`):
 
 ### Release Process
 
+**While `main` is parked** (see "Branch model" in README.md), releases happen on the **default
+branch** (`factorio-2.1.8`): PRs merged there publish `:latest` and the Clusterio version tag
+from **custom** (fork) builds. Do **not** push `v*` tags meanwhile — tag builds use the
+`release` target, so the semver tags would carry npm-based images that cannot run the current
+Factorio line.
+
+The npm-release flow below applies to `main` and resumes when an npm Clusterio release supports
+the current Factorio line (at which point `main` absorbs the active line and the default branch
+may move back — `:latest` always publishes from the default branch):
+
 Release builds use `CLUSTERIO_TARGET=release` (npm packages), pinned to `CLUSTERIO_VERSION`.
 
 1. **Bump the version** — set `ARG CLUSTERIO_VERSION` to the new Clusterio version in **both** `Dockerfile.controller` and `Dockerfile.host` (e.g. `2.0.0-alpha.26`). This single value pins the `@clusterio/*` npm packages **and** the published image tag. Update the version references in this file and `docs/consumer-integration.md` to match.
@@ -283,11 +293,11 @@ Release builds use `CLUSTERIO_TARGET=release` (npm packages), pinned to `CLUSTER
 
 ### Versioning (this repo's own version)
 
-clusterio-docker has its **own** SemVer (git tags `vMAJOR.MINOR.PATCH`), independent of Clusterio's alpha version. It is currently at **`v1.1.0`**; the alpha.25 upgrade and the EULA-compliant runtime Factorio download are unreleased on `main` and warrant the next tag — a **major** bump, since dropping the bundled Factorio changes image behavior. Pushing a `v*` tag publishes via `type=semver`, so each release carries **both** axes:
+clusterio-docker has its **own** SemVer (git tags `vMAJOR.MINOR.PATCH`), independent of Clusterio's alpha version. It is currently at **`v1.1.0`**; the alpha.26 upgrade and the EULA-compliant runtime Factorio download are untagged and warrant the next tag — a **major** bump, since dropping the bundled Factorio changes image behavior. Pushing a `v*` tag publishes via `type=semver`, so each release carries **both** axes:
 
 - `:2.0.0`, `:2.0`, `:2` — this repo's version (from the git tag)
 - `:2.0.0-alpha.26` — the bundled Clusterio version (from the `CLUSTERIO_VERSION` build arg)
-- `:latest` — newest `main`
+- `:latest` — newest default branch (currently `factorio-2.1.8`)
 
 Bump rules: **major** = breaking image usage (env/volume/behavior), **minor** = new capability or a Clusterio bump, **patch** = fixes/docs.
 
