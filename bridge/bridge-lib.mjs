@@ -1,5 +1,5 @@
 // Pure helpers for the Clusterio bridge — no env reads, no @clusterio/lib import,
-// so `node --test scripts/bridge-lib.test.mjs` runs without a cluster or container.
+// so `node --test bridge/bridge-lib.test.mjs` runs without a cluster or container.
 import crypto from "node:crypto";
 
 export const MAX_COMMAND_BYTES = 4096;

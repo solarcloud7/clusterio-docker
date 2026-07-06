@@ -1,5 +1,5 @@
 // Unit tests for the bridge's pure security helpers.
-// Run: node --test scripts/bridge-lib.test.mjs  (no cluster or container needed)
+// Run: node --test bridge/bridge-lib.test.mjs  (no cluster or container needed)
 import test from "node:test";
 import assert from "node:assert/strict";
 import {

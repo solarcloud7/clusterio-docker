@@ -180,7 +180,7 @@ jobs:
       # Fast pure-function gate before any expensive compose work: the bridge's
       # auth/CIDR/limit helpers are security-relevant and fully unit-testable.
       - name: Bridge unit tests (no cluster needed)
-        run: node --test scripts/bridge-lib.test.mjs
+        run: node --test bridge/bridge-lib.test.mjs
 
       - name: Set up test environment
         id: setup
