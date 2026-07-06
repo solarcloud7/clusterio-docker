@@ -182,6 +182,27 @@ jobs:
         run: |
           cp .env.example .env
           echo "INIT_CLUSTERIO_ADMIN=testadmin" >> .env
+          echo "BRIDGE_PORT=8100" >> .env
+          echo "BRIDGE_TOKEN=ci-bridge-token" >> .env
+          echo "BRIDGE_BIND_HOST=172.31.50.10" >> .env
+          echo "BRIDGE_ALLOWED_CIDRS=172.31.50.0/24" >> .env
+          echo "BRIDGE_ALLOW_RAW=false" >> .env
+
+          cat > docker-compose.bridge-ci.yml <<'YAML'
+          services:
+            clusterio-controller:
+              networks:
+                clusterio-net:
+                bridge-net:
+                  ipv4_address: 172.31.50.10
+          networks:
+            bridge-net:
+              driver: bridge
+              internal: true
+              ipam:
+                config:
+                  - subnet: 172.31.50.0/24
+          YAML
 
           # Add Factorio credentials if available (enables runtime game client download on host-1)
           if [ -n "$FACTORIO_USERNAME" ] && [ -n "$FACTORIO_TOKEN" ]; then
@@ -243,7 +264,7 @@ jobs:
 
       - name: Start services
         # Dev overlay included so `up` uses the locally-built images, never pulls.
-        run: docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d
+        run: docker compose -f docker-compose.yml -f docker-compose.dev.yml -f docker-compose.bridge-ci.yml up -d
 
       - name: Wait for controller health
         run: |
@@ -316,6 +337,82 @@ jobs:
             && echo "PASS: StoppedInstance is not running (auto_start=false)" \
             || { echo "FAIL: StoppedInstance should not be running"; exit 1; }
 
+      - name: Verify Discord bridge
+        run: |
+          BRIDGE_URL=http://172.31.50.10:8100
+          TOKEN=ci-bridge-token
+
+          echo "=== Bridge refuses to start without token ==="
+          if docker exec clusterio-controller sh -c 'BRIDGE_PORT=8100 BRIDGE_BIND_HOST=127.0.0.1 BRIDGE_CONFIG=/clusterio/tokens/config-control.json node /clusterio/bridge.mjs' >/tmp/bridge-no-token.log 2>&1; then
+            echo "FAIL: bridge started without BRIDGE_TOKEN"
+            exit 1
+          fi
+          grep -q "BRIDGE_TOKEN is required" /tmp/bridge-no-token.log \
+            && echo "PASS: missing BRIDGE_TOKEN is loud" \
+            || { echo "FAIL: missing-token message absent"; cat /tmp/bridge-no-token.log; exit 1; }
+
+          echo "=== /health requires auth ==="
+          CODE=$(docker exec clusterio-controller sh -c "curl -sS -o /tmp/bridge-noauth.json -w '%{http_code}' $BRIDGE_URL/health")
+          [ "$CODE" = "401" ] \
+            && echo "PASS: /health returns 401 without token" \
+            || { echo "FAIL: expected 401, got $CODE"; exit 1; }
+
+          echo "=== /health proves controller round-trip ==="
+          docker exec clusterio-controller sh -c "curl -fsS -H 'Authorization: Bearer $TOKEN' $BRIDGE_URL/health" | grep -q '"status":"ok"' \
+            && echo "PASS: /health returned ok" \
+            || { echo "FAIL: /health did not return ok"; exit 1; }
+
+          echo "=== /instances and /hosts return live data ==="
+          INSTANCES=$(docker exec clusterio-controller sh -c "curl -fsS -H 'Authorization: Bearer $TOKEN' $BRIDGE_URL/instances")
+          echo "$INSTANCES" | grep -q "TestInstance" \
+            && echo "PASS: /instances contains TestInstance" \
+            || { echo "FAIL: /instances missing TestInstance"; echo "$INSTANCES"; exit 1; }
+          docker exec clusterio-controller sh -c "curl -fsS -H 'Authorization: Bearer $TOKEN' $BRIDGE_URL/hosts" | grep -q "clusterio-host-1" \
+            && echo "PASS: /hosts contains clusterio-host-1" \
+            || { echo "FAIL: /hosts missing clusterio-host-1"; exit 1; }
+
+          RUNNING_ID=$(echo "$INSTANCES" | node -e 'let s=""; process.stdin.on("data", d => s += d); process.stdin.on("end", () => { const i = JSON.parse(s).find(x => x.name === "TestInstance"); if (!i) process.exit(1); console.log(i.id); });')
+          STOPPED_ID=$(echo "$INSTANCES" | node -e 'let s=""; process.stdin.on("data", d => s += d); process.stdin.on("end", () => { const i = JSON.parse(s).find(x => x.name === "StoppedInstance"); if (!i) process.exit(1); console.log(i.id); });')
+
+          echo "=== Template command works on running instance ==="
+          printf '{"instanceId":%s,"template":"players-online","params":{}}' "$RUNNING_ID" \
+            | docker exec -i clusterio-controller sh -c "curl -fsS -H 'Authorization: Bearer $TOKEN' -H 'content-type: application/json' --data-binary @- $BRIDGE_URL/commands" \
+            | grep -q '"output"' \
+            && echo "PASS: template command returned output" \
+            || { echo "FAIL: template command failed"; exit 1; }
+
+          echo "=== Unknown and stopped instances return clean 4xx ==="
+          UNKNOWN_CODE=$(printf '{"instanceId":999999,"template":"players-online","params":{}}' \
+            | docker exec -i clusterio-controller sh -c "curl -sS -o /tmp/bridge-unknown.json -w '%{http_code}' -H 'Authorization: Bearer $TOKEN' -H 'content-type: application/json' --data-binary @- $BRIDGE_URL/commands")
+          [ "$UNKNOWN_CODE" = "404" ] \
+            && echo "PASS: unknown instance returns 404" \
+            || { echo "FAIL: expected 404 for unknown instance, got $UNKNOWN_CODE"; exit 1; }
+          STOPPED_CODE=$(printf '{"instanceId":%s,"template":"players-online","params":{}}' "$STOPPED_ID" \
+            | docker exec -i clusterio-controller sh -c "curl -sS -o /tmp/bridge-stopped.json -w '%{http_code}' -H 'Authorization: Bearer $TOKEN' -H 'content-type: application/json' --data-binary @- $BRIDGE_URL/commands")
+          [ "$STOPPED_CODE" = "409" ] \
+            && echo "PASS: stopped instance returns 409" \
+            || { echo "FAIL: expected 409 for stopped instance, got $STOPPED_CODE"; exit 1; }
+
+          echo "=== Raw RCON disabled by default ==="
+          RAW_CODE=$(printf '{"instanceId":%s,"command":"/players online"}' "$RUNNING_ID" \
+            | docker exec -i clusterio-controller sh -c "curl -sS -o /tmp/bridge-raw.json -w '%{http_code}' -H 'Authorization: Bearer $TOKEN' -H 'content-type: application/json' --data-binary @- $BRIDGE_URL/rcon")
+          [ "$RAW_CODE" = "403" ] \
+            && echo "PASS: raw RCON returns 403" \
+            || { echo "FAIL: expected 403 for raw RCON, got $RAW_CODE"; exit 1; }
+
+          echo "=== Body cap rejects oversized requests ==="
+          BIG_CODE=$(node -e 'process.stdout.write(JSON.stringify({ instanceId: Number(process.argv[1]), template: "players-online", params: {}, pad: "x".repeat(9000) }))' "$RUNNING_ID" \
+            | docker exec -i clusterio-controller sh -c "curl -sS -o /tmp/bridge-big.json -w '%{http_code}' -H 'Authorization: Bearer $TOKEN' -H 'content-type: application/json' --data-binary @- $BRIDGE_URL/commands")
+          [ "$BIG_CODE" = "413" ] \
+            && echo "PASS: oversized request returns 413" \
+            || { echo "FAIL: expected 413 for oversized request, got $BIG_CODE"; exit 1; }
+
+          echo "=== Non-member network cannot use the bridge ==="
+          if docker exec clusterio-host-1 sh -c "curl -fsS --max-time 3 -H 'Authorization: Bearer $TOKEN' $BRIDGE_URL/health"; then
+            echo "FAIL: cluster network host reached the bridge"
+            exit 1
+          fi
+          echo "PASS: non-member host cannot use bridge"
       - name: Verify export-data
         if: steps.setup.outputs.has_client == 'true'
         run: |
@@ -393,7 +490,7 @@ jobs:
       - name: Verify idempotent restart + boot-race guard
         run: |
           echo "=== Restart and verify no duplicate seeding ==="
-          docker compose restart
+          docker compose -f docker-compose.yml -f docker-compose.dev.yml -f docker-compose.bridge-ci.yml restart
           sleep 30
           INSTANCE_COUNT=$(docker exec clusterio-controller npx clusterioctl \
             --config /clusterio/tokens/config-control.json \
@@ -424,8 +521,8 @@ jobs:
 
       - name: Show logs on failure
         if: failure()
-        run: docker compose logs
+        run: docker compose -f docker-compose.yml -f docker-compose.dev.yml -f docker-compose.bridge-ci.yml logs
 
       - name: Cleanup
         if: always()
-        run: docker compose down -v
+        run: docker compose -f docker-compose.yml -f docker-compose.dev.yml -f docker-compose.bridge-ci.yml down -v

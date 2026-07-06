@@ -11,6 +11,9 @@
 !/seed-data/hosts/clusterio-host-2/TestInst2/instance.json
 !/seed-data/mods/squeak-through-2_0.2.0.zip
 
+# Local compose overrides (machine-specific ports/networks)
+docker-compose.override.yml
+
 # Environment file (contains secrets)
 .env
 !.env.example

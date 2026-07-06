@@ -123,8 +123,8 @@ fi
 gosu clusterio npx clusteriocontroller run --config "$CONFIG_PATH" &
 CONTROLLER_PID=$!
 
-# Forward signals to the controller process for graceful shutdown
-trap 'kill $CONTROLLER_PID; wait $CONTROLLER_PID; exit $?' SIGTERM SIGINT
+# Forward signals to the controller process and optional bridge for graceful shutdown
+trap 'kill $CONTROLLER_PID ${BRIDGE_PID:-} 2>/dev/null; wait $CONTROLLER_PID; exit $?' SIGTERM SIGINT
 
 # Wait for controller to be ready
 echo "Waiting for controller to start..."
@@ -207,8 +207,39 @@ else
   /scripts/seed-mods.sh "$CONTROL_CONFIG" "$MOD_PACK_ID"
 fi
 
-# Honest readiness: everything above (config, bootstrap, seeding) completed —
-# only now does the healthcheck's marker requirement pass.
+# Optional Discord bridge: start only after the controller has reached the same
+# steady-state point used for honest readiness. The bridge is private to a
+# dedicated Docker network; do not publish BRIDGE_PORT to the host.
+if [ -n "${BRIDGE_PORT:-}" ]; then
+  if [ -z "${BRIDGE_TOKEN:-}" ]; then
+    echo "ERROR: BRIDGE_TOKEN is required when BRIDGE_PORT is set." >&2
+    kill "$CONTROLLER_PID" 2>/dev/null || true
+    wait "$CONTROLLER_PID" 2>/dev/null || true
+    exit 1
+  fi
+  if [ -z "${BRIDGE_BIND_HOST:-}" ]; then
+    echo "ERROR: BRIDGE_BIND_HOST is required when BRIDGE_PORT is set." >&2
+    kill "$CONTROLLER_PID" 2>/dev/null || true
+    wait "$CONTROLLER_PID" 2>/dev/null || true
+    exit 1
+  fi
+  echo "Starting Clusterio Discord bridge on ${BRIDGE_BIND_HOST}:${BRIDGE_PORT}"
+  BRIDGE_CONFIG="$CONTROL_CONFIG" BRIDGE_PORT="$BRIDGE_PORT" BRIDGE_TOKEN="$BRIDGE_TOKEN" \
+    BRIDGE_BIND_HOST="$BRIDGE_BIND_HOST" BRIDGE_ALLOWED_CIDRS="${BRIDGE_ALLOWED_CIDRS:-}" \
+    BRIDGE_ALLOW_RAW="${BRIDGE_ALLOW_RAW:-false}" \
+    gosu clusterio node /clusterio/bridge.mjs &
+  BRIDGE_PID=$!
+  sleep 1
+  if ! kill -0 "$BRIDGE_PID" 2>/dev/null; then
+    echo "ERROR: Clusterio Discord bridge exited during startup." >&2
+    kill "$CONTROLLER_PID" 2>/dev/null || true
+    wait "$CONTROLLER_PID" 2>/dev/null || true
+    exit 1
+  fi
+fi
+
+# Honest readiness: everything above (config, bootstrap, seeding, optional bridge launch)
+# completed — only now does the healthcheck's marker requirement pass.
 touch "$DATA_DIR/.seed-healthy"
 echo "Entrypoint steady state reached — controller healthcheck can now pass"
 
