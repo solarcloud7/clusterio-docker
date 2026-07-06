@@ -1,10 +1,15 @@
-# Force LF line endings for shell scripts (required for Docker/Linux)
-*.sh text eol=lf
+# Repo stores LF and working trees check out LF (overrides core.autocrlf).
+# Scripts and configs here are consumed by Linux containers — a CRLF working
+# copy that gets mounted or docker-cp'd in breaks them.
+* text=auto eol=lf
 
-# Keep Windows line endings for Windows scripts
+# Windows-native scripts check out CRLF
 *.ps1 text eol=crlf
 *.cmd text eol=crlf
 *.bat text eol=crlf
 
-# Other files - auto detect
-* text=auto
+# Binary — never touch line endings
+*.zip binary
+*.png binary
+*.jpg binary
+*.dat binary
