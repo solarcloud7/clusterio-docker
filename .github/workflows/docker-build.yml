@@ -341,6 +341,55 @@ jobs:
               || { echo "FAIL: no [cluster-log] lines in $c"; docker logs "$c" 2>&1 | tail -20; exit 1; }
           done
 
+      # ---- Silent-degradation tripwires ----
+      # Each of these protections can vanish with no error anywhere when a
+      # Clusterio version bump changes internals. The tests exist to turn
+      # "protection silently gone" into a red build.
+
+      - name: Verify static-cache patch attached (engineering notes 6)
+        run: |
+          echo "=== Patch reports it found and flipped the upstream pattern ==="
+          docker logs clusterio-controller 2>&1 | grep -qE "\[static-cache-patch\] (applied|already applied)" \
+            && echo "PASS: static-cache patch attached" \
+            || { echo "FAIL: patch did not attach — core layout changed, protection silently gone"
+                 docker logs clusterio-controller 2>&1 | grep static-cache-patch || echo "(no patch log lines at all)"
+                 exit 1; }
+
+          echo "=== /static actually serves with revalidation, not immutable ==="
+          ASSET=$(docker exec clusterio-controller sh -c "curl -fsS http://localhost:8080/" | grep -oE '/static/[^"]+\.js' | head -1)
+          [ -n "$ASSET" ] || { echo "FAIL: app shell references no /static asset"; exit 1; }
+          HEADER=$(docker exec clusterio-controller sh -c "curl -fsSI http://localhost:8080$ASSET" | tr -d '\r' | grep -i '^cache-control:')
+          echo "asset=$ASSET  $HEADER"
+          case "$HEADER" in
+            *immutable*) echo "FAIL: /static still immutable — returning browsers pin stale web UI for a year"; exit 1;;
+            *) echo "PASS: /static revalidates";;
+          esac
+
+      - name: Verify BUILD_INFO provenance
+        run: |
+          # Same condition the build step used to pick the target
+          if [ -d "clusterio" ]; then EXPECTED=custom; else EXPECTED=release; fi
+          for c in clusterio-controller clusterio-host-1; do
+            INFO=$(docker exec "$c" cat /clusterio/BUILD_INFO)
+            echo "--- $c ---"; echo "$INFO"
+            echo "$INFO" | grep -q "\"clusterioTarget\": \"$EXPECTED\"" \
+              && echo "PASS: $c built from expected target ($EXPECTED)" \
+              || { echo "FAIL: $c clusterioTarget is not $EXPECTED"; exit 1; }
+            echo "$INFO" | grep -q '"clusterioVersion":' \
+              || { echo "FAIL: $c BUILD_INFO missing clusterioVersion"; exit 1; }
+          done
+
+      - name: Verify per-host game-port ranges (pitfall 6)
+        run: |
+          for n in 1 2; do
+            RANGE="34${n}00-34${n}99"
+            docker exec "clusterio-host-$n" cat /clusterio/data/config-host.json | grep -q "$RANGE" \
+              && echo "PASS: host-$n derived port range $RANGE from HOST_ID" \
+              || { echo "FAIL: host-$n config missing derived range $RANGE"
+                   docker exec "clusterio-host-$n" cat /clusterio/data/config-host.json | grep -o 'factorio_port_range[^,}]*' || true
+                   exit 1; }
+          done
+
       - name: Verify idempotent restart + boot-race guard
         run: |
           echo "=== Restart and verify no duplicate seeding ==="

@@ -11,6 +11,14 @@ change notice: container → sha → this file.
 Format: `## YYYY-MM-DD` heading + short bullets. Always state the Clusterio /
 Factorio versions when they change.
 
+## 2026-07-06
+
+- CI only (no image content change): added silent-degradation tripwires — asserts the
+  static-cache patch actually attached and `/static` serves with revalidation (a Clusterio
+  bump can remove the protection with no error), asserts `BUILD_INFO.clusterioTarget`
+  matches the target CI built, and asserts each host derived its non-overlapping game-port
+  range from `HOST_ID` (host N → `34N00-34N99`).
+
 ## 2026-07-05
 
 - CI: absorbed `main`'s Node-24 Actions bump (checkout@v6, buildx@v4,
