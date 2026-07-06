@@ -25,6 +25,12 @@ Factorio versions when they change.
   controller code actually running on a fresh cluster.
 - CI: buildx cache hygiene — per-image cache scopes (controller/host no longer evict each
   other's layers) and a cleanup workflow that deletes a PR's caches when it closes.
+- **Fix: external-plugin npm install on custom-target images** — `/clusterio` is the pnpm
+  monorepo and its root `package.json` claims `external_plugins/*` as a workspace, so a bare
+  `npm install` in a mounted plugin dir operated on the whole monorepo and died on pnpm's
+  `catalog:` protocol. Every external-plugin install on custom images failed (masked by the
+  warn-and-continue). `install-plugins.sh` now passes `--workspaces=false`; the new
+  ci_fixture lifecycle test caught this on its first run.
 
 ## 2026-07-05
 
