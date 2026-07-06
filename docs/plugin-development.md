@@ -14,9 +14,13 @@ guide is for writing one.
      - ./plugins:/clusterio/external_plugins
    ```
    The mount must be writable — the entrypoint npm-installs inside each plugin dir.
-2. On container start, `install-plugins.sh` installs each plugin's production deps and
-   **registers** it. Its full contract (non-fatal stderr WARNINGs, the `@clusterio` strip) is
-   documented in the README.
+2. On container start, `install-plugins.sh` installs each plugin's production deps (its full
+   contract — non-fatal stderr WARNINGs, the `@clusterio` strip — is documented in the README).
+   **Registration is separate and automatic**: Clusterio's startup scan (`loadPluginList`)
+   walks `external_plugins/` and registers any directory whose `package.json` has
+   **`"clusterio-plugin"` in `keywords`**. That keyword is load-bearing — without it the
+   plugin npm-installs cleanly and then **silently never loads**. CI pins this whole
+   lifecycle with the `seed-data/external_plugins/ci_fixture` plugin.
 
 ## The two rules that cost the most when unknown
 

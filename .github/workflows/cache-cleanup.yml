@@ -1,0 +1,30 @@
+name: Cache cleanup
+
+# Buildx type=gha caches store one entry per layer blob, so entries pile up
+# fast (hundreds across branches) and thrash the repo's 10 GB LRU limit.
+# Delete a PR's caches (merge ref + head branch ref) as soon as it closes —
+# they are never read again.
+on:
+  pull_request:
+    types: [closed]
+
+permissions:
+  actions: write
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Delete caches for the closed PR
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          for REF in "refs/pull/${{ github.event.pull_request.number }}/merge" \
+                     "refs/heads/${{ github.event.pull_request.head.ref }}"; do
+            echo "Deleting caches scoped to $REF"
+            gh api "repos/${{ github.repository }}/actions/caches?ref=$REF&per_page=100" \
+              -q '.actions_caches[].id' | while read -r id; do
+              gh api -X DELETE "repos/${{ github.repository }}/actions/caches/$id" \
+                && echo "  deleted cache $id" || true
+            done
+          done
