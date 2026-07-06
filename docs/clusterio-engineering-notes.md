@@ -68,6 +68,16 @@ valid` — the lenient-parsing fix was merged upstream 9 days after the alpha sh
 **Images**: `factorio-*` branches (and PRs into them) build the `custom` target from the
 matching fork branch; the DLC enable is non-fatal-but-loud on cores missing a builtin;
 dual-axis tags + `BUILD_INFO` make which-core-am-I-running a query.
+**Upstream catch-up status (checked 2026-07-06):** upstream `master` now carries 2.1 in
+`ApiVersions`, the 2.1 default packs + `recycler` builtin (#936), and lenient mod-version
+parsing (#941). The one remaining fork patch — the `clusterio_lib` `factorio_version: "2.1"`
+variant — is in open upstream PR
+[clusterio/clusterio#943](https://github.com/clusterio/clusterio/pull/943), which also adds
+Factorio 2.1.8 to the upstream test matrix and enables OIDC publishing for the next release.
+None of this is on npm yet (latest: alpha.26, published 2026-06-22). **Reactivation trigger:**
+when #943 merges and the next alpha publishes, the `release` target regains 2.1 support — bump
+`CLUSTERIO_VERSION`, merge the active line into `main`, and the custom-build machinery goes
+dormant (see "Release Process" in CLAUDE.md).
 
 ### 8. Duplicate `@clusterio/lib` is fatal, and npm plants duplicates by default (🛡 📝)
 Clusterio (correctly) enforces a singleton `@clusterio/lib` — but npm 7+ auto-installs
