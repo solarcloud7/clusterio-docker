@@ -1,0 +1,12 @@
+{
+	"name": "ci_fixture",
+	"version": "1.0.0",
+	"description": "Minimal external plugin fixture: proves install, @clusterio dedup, keyword discovery, and load in CI.",
+	"main": "index.js",
+	"keywords": ["clusterio-plugin"],
+	"license": "MIT",
+	"peerDependencies": {
+		"@clusterio/lib": "*",
+		"@clusterio/controller": "*"
+	}
+}
