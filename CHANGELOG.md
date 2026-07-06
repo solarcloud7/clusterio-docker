@@ -13,6 +13,8 @@ Factorio versions when they change.
 
 ## 2026-07-06
 
+- **Discord bridge hardening**: added an opt-in controller-local bridge for the Discord bot, backed by one persistent `@clusterio/lib` Control connection, required bearer token auth, dedicated-network binding (`BRIDGE_BIND_HOST`), optional CIDR allowlisting, request/rate/body/output limits, template-only commands by default, and raw RCON behind `BRIDGE_ALLOW_RAW=true`. The bridge is copied into the controller image but `8100` is not published by compose; docs and CI cover the private-network deployment pattern.
+- **Bridge fix + test layer**: fixed a signedness bug in the CIDR allowlist — networks with the first octet ≥ 128 (e.g. `172.31.50.0/24`) never matched and every request got 403. Caught by the new unit tests: pure helpers (auth, CIDR, rate limit, size caps, command templates) now live in `bridge/bridge-lib.mjs` with `node --test` coverage gating CI before the compose stack builds. CI also gained wrong-token 401, rate-limit 429, and bridge-survives-restart checks.
 - CI only (no image content change): added silent-degradation tripwires — asserts the
   static-cache patch actually attached and `/static` serves with revalidation (a Clusterio
   bump can remove the protection with no error), asserts `BUILD_INFO.clusterioTarget`

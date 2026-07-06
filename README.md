@@ -29,6 +29,7 @@ Docker images for running [Clusterio](https://github.com/clusterio/clusterio) - 
 - [Asset Export — game client & export-data](docs/asset-export.md)
 - [Plugin Development guide](docs/plugin-development.md)
 - [Multi-cluster machines](docs/multi-cluster.md)
+- [Discord bridge](docs/discord-bridge.md)
 - [Clusterio engineering notes](docs/clusterio-engineering-notes.md)
 - [Architecture](#architecture)
 - [Troubleshooting](#troubleshooting)
@@ -234,6 +235,11 @@ docker run -d -p 34100-34199:34100-34199/udp \
 | `EXPORT_HOST` | `1` (compose) / `0` (skip) | Host ID whose instance runs `export-data` (web-UI icons/prototypes) during first-run seeding — that host needs the game client. See [Asset Export](docs/asset-export.md). |
 | `CONTROLLER_STATIC_CACHE_MODE` | `revalidate` | `/static` cache headers: `revalidate` (default — non-hashed web-UI assets stay fresh across upgrades) or `immutable` (stock Clusterio behavior) |
 | `CLUSTERIO_LOG_TO_STDOUT` | `true` | Mirror the on-disk cluster/host logs (plugin logger output) to container stdout with a `[cluster-log]` prefix |
+| `BRIDGE_PORT` | *(unset)* | Optional Discord bridge port inside the controller container; do not publish this port to the host |
+| `BRIDGE_TOKEN` | *(required when `BRIDGE_PORT` is set)* | Bearer token for every bridge request; missing token refuses startup |
+| `BRIDGE_BIND_HOST` | *(required when `BRIDGE_PORT` is set)* | Controller IP on the dedicated bridge network; the bridge binds here instead of `0.0.0.0` |
+| `BRIDGE_ALLOWED_CIDRS` | *(unset)* | Optional CIDR allowlist for defense-in-depth, e.g. the dedicated bridge network subnet |
+| `BRIDGE_ALLOW_RAW` | `false` | Allow raw `/rcon` passthrough; default false keeps Discord access to curated templates only |
 
 ### Host
 

@@ -105,8 +105,10 @@ COPY --chown=clusterio:clusterio scripts/suppress-dev-warning.js /tmp/suppress-d
 RUN node /tmp/suppress-dev-warning.js && rm /tmp/suppress-dev-warning.js \
     && rm -f /clusterio/.npmrc
 
-# Expose the controller port
+# Expose the controller port. 8100 is documentation-only for the opt-in private bridge;
+# docker-compose.yml intentionally does not publish it to the host.
 EXPOSE ${CONTROLLER_HTTP_PORT}
+EXPOSE 8100
 
 # Switch to root for entrypoint (gosu will drop to clusterio)
 USER root
@@ -129,6 +131,8 @@ COPY --chmod=755 scripts/seed-mods.sh /scripts/seed-mods.sh
 COPY --chmod=755 scripts/seed-instances.sh /scripts/seed-instances.sh
 COPY --chmod=755 scripts/regenerate-export-data.sh /scripts/regenerate-export-data.sh
 COPY scripts/patches/disable-immutable-cache.js /scripts/patches/disable-immutable-cache.js
+# Bridge lives in /clusterio so ESM resolves @clusterio/lib from /clusterio/node_modules.
+COPY --chown=clusterio:clusterio bridge/bridge.mjs bridge/bridge-lib.mjs /clusterio/
 COPY --chmod=755 scripts/controller-entrypoint.sh /controller-entrypoint.sh
 
 # Honest readiness (#20): HTTP up AND the entrypoint reached steady state
