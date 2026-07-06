@@ -177,6 +177,11 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v6
 
+      # Fast pure-function gate before any expensive compose work: the bridge's
+      # auth/CIDR/limit helpers are security-relevant and fully unit-testable.
+      - name: Bridge unit tests (no cluster needed)
+        run: node --test scripts/bridge-lib.test.mjs
+
       - name: Set up test environment
         id: setup
         run: |
@@ -357,6 +362,12 @@ jobs:
             && echo "PASS: /health returns 401 without token" \
             || { echo "FAIL: expected 401, got $CODE"; exit 1; }
 
+          echo "=== Wrong token is rejected (exercises the timing-safe compare) ==="
+          WRONG_CODE=$(docker exec clusterio-controller sh -c "curl -sS -o /dev/null -w '%{http_code}' -H 'Authorization: Bearer not-$TOKEN' $BRIDGE_URL/health")
+          [ "$WRONG_CODE" = "401" ] \
+            && echo "PASS: wrong token returns 401" \
+            || { echo "FAIL: expected 401 for wrong token, got $WRONG_CODE"; exit 1; }
+
           echo "=== /health proves controller round-trip ==="
           docker exec clusterio-controller sh -c "curl -fsS -H 'Authorization: Bearer $TOKEN' $BRIDGE_URL/health" | grep -q '"status":"ok"' \
             && echo "PASS: /health returned ok" \
@@ -413,6 +424,15 @@ jobs:
             exit 1
           fi
           echo "PASS: non-member host cannot use bridge"
+
+          # LAST in this step on purpose: tripping the limit poisons the bucket
+          # for up to a minute. The next bridge access is the post-restart probe,
+          # which gets a fresh process (in-memory buckets reset).
+          echo "=== Rate limit trips within the 60/min window ==="
+          CODES=$(docker exec clusterio-controller sh -c "for i in \$(seq 1 70); do curl -sS -o /dev/null -w '%{http_code}\n' -H 'Authorization: Bearer $TOKEN' $BRIDGE_URL/commands; done")
+          echo "$CODES" | grep -qx '429' \
+            && echo "PASS: burst of 70 requests hit 429" \
+            || { echo "FAIL: no 429 in a 70-request burst"; echo "$CODES" | sort | uniq -c; exit 1; }
       - name: Verify export-data
         if: steps.setup.outputs.has_client == 'true'
         run: |
@@ -499,6 +519,11 @@ jobs:
           [ "$INSTANCE_COUNT" -le 2 ] \
             && echo "PASS: No duplicate instances after restart" \
             || { echo "FAIL: Duplicate instances detected"; exit 1; }
+
+          echo "=== Bridge survives restart (entrypoint relaunch + signal trap) ==="
+          timeout 120 bash -c "until docker exec clusterio-controller sh -c \"curl -fsS -H 'Authorization: Bearer ci-bridge-token' http://172.31.50.10:8100/health\" 2>/dev/null | grep -q '\"status\":\"ok\"'; do sleep 5; done" \
+            && echo "PASS: bridge healthy after restart" \
+            || { echo "FAIL: bridge did not come back after restart"; docker logs clusterio-controller 2>&1 | grep -i bridge | tail -20; exit 1; }
 
           echo "=== Boot-race guard completed on both hosts (2nd run = post-restart) ==="
           for h in clusterio-host-1 clusterio-host-2; do

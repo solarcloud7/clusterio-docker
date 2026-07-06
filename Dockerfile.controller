@@ -132,7 +132,7 @@ COPY --chmod=755 scripts/seed-instances.sh /scripts/seed-instances.sh
 COPY --chmod=755 scripts/regenerate-export-data.sh /scripts/regenerate-export-data.sh
 COPY scripts/patches/disable-immutable-cache.js /scripts/patches/disable-immutable-cache.js
 # Bridge lives in /clusterio so ESM resolves @clusterio/lib from /clusterio/node_modules.
-COPY --chown=clusterio:clusterio scripts/bridge.mjs /clusterio/bridge.mjs
+COPY --chown=clusterio:clusterio scripts/bridge.mjs scripts/bridge-lib.mjs /clusterio/
 COPY --chmod=755 scripts/controller-entrypoint.sh /controller-entrypoint.sh
 
 # Honest readiness (#20): HTTP up AND the entrypoint reached steady state
