@@ -142,8 +142,10 @@ jobs:
           build-args: |
             CLUSTERIO_TARGET=${{ env.CLUSTERIO_TARGET }}
             BUILD_REVISION=${{ github.sha }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          # Distinct scopes: without them both images write the same cache
+          # index and evict each other's layers on every run.
+          cache-from: type=gha,scope=controller
+          cache-to: type=gha,mode=max,scope=controller
 
       - name: Build and push Host image
         uses: docker/build-push-action@v7
@@ -156,8 +158,8 @@ jobs:
           build-args: |
             CLUSTERIO_TARGET=${{ env.CLUSTERIO_TARGET }}
             BUILD_REVISION=${{ github.sha }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-from: type=gha,scope=host
+          cache-to: type=gha,mode=max,scope=host
 
       - name: Publish change notice to run summary
         if: github.event_name == 'push'
@@ -206,6 +208,15 @@ jobs:
           # Add a second instance on host-2 with auto_start disabled
           mkdir -p seed-data/hosts/clusterio-host-2/StoppedInstance
           echo '{"instance.auto_start": false}' > seed-data/hosts/clusterio-host-2/StoppedInstance/instance.json
+
+          # External-plugin CI mount: the base compose ships this mount commented
+          # out. Must be writable — install-plugins.sh npm-installs inside it.
+          cat > docker-compose.plugin-ci.yml <<'YAML'
+          services:
+            clusterio-controller:
+              volumes:
+                - ./seed-data/external_plugins:/clusterio/external_plugins
+          YAML
         env:
           FACTORIO_USERNAME: ${{ secrets.FACTORIO_USERNAME }}
           FACTORIO_TOKEN: ${{ secrets.FACTORIO_TOKEN }}
@@ -243,7 +254,7 @@ jobs:
 
       - name: Start services
         # Dev overlay included so `up` uses the locally-built images, never pulls.
-        run: docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d
+        run: docker compose -f docker-compose.yml -f docker-compose.dev.yml -f docker-compose.plugin-ci.yml up -d
 
       - name: Wait for controller health
         run: |
@@ -389,6 +400,45 @@ jobs:
                    docker exec "clusterio-host-$n" cat /clusterio/data/config-host.json | grep -o 'factorio_port_range[^,}]*' || true
                    exit 1; }
           done
+
+      # The full external-plugin lifecycle on a FRESH cluster: npm install,
+      # the @clusterio dedup strip (pitfall 10), keyword-gated auto-discovery,
+      # and the plugin's code actually loading. Every stage can fail silently.
+      - name: Verify external plugin lifecycle (pitfall 10)
+        run: |
+          echo "=== install-plugins.sh installed the fixture ==="
+          docker logs clusterio-controller 2>&1 | grep -q "Installing plugin: ci_fixture" \
+            && echo "PASS: fixture install ran" \
+            || { echo "FAIL: install-plugins.sh never processed ci_fixture"; exit 1; }
+
+          echo "=== @clusterio dedup strip fired and no duplicates remain ==="
+          docker logs clusterio-controller 2>&1 | grep -q "Removing local @clusterio packages" \
+            && echo "PASS: strip fired (npm planted peer deps as expected)" \
+            || { echo "FAIL: strip never fired — npm peer-dep behavior changed?"; exit 1; }
+          docker exec clusterio-controller sh -c '[ ! -d /clusterio/external_plugins/ci_fixture/node_modules/@clusterio ]' \
+            && echo "PASS: no local @clusterio duplicates remain" \
+            || { echo "FAIL: local @clusterio duplicates survived the strip"; exit 1; }
+
+          echo "=== keyword-gated auto-discovery registered it ==="
+          docker exec clusterio-controller sh -c 'grep -q ci_fixture /clusterio/plugin-list.json' \
+            && echo "PASS: ci_fixture in plugin-list.json" \
+            || { echo "FAIL: not discovered — clusterio-plugin keyword contract broken?"
+                 docker exec clusterio-controller cat /clusterio/plugin-list.json || true
+                 exit 1; }
+
+          echo "=== the plugin's controller code actually loaded ==="
+          timeout 60 bash -c 'until docker logs clusterio-controller 2>&1 | grep -q "ci_fixture controller plugin loaded"; do sleep 5; done' \
+            && echo "PASS: fixture controller entrypoint ran" \
+            || { echo "FAIL: plugin registered but its code never loaded"
+                 docker logs clusterio-controller 2>&1 | grep -i "ci_fixture\|plugin" | tail -20
+                 exit 1; }
+
+          echo "=== clusterioctl unharmed (no duplicate singleton) ==="
+          timeout 30 docker exec clusterio-controller npx clusterioctl \
+            --config /clusterio/tokens/config-control.json \
+            user list >/dev/null 2>&1 \
+            && echo "PASS: clusterioctl works with the external plugin installed" \
+            || { echo "FAIL: clusterioctl broken after plugin install (duplicate @clusterio/lib?)"; exit 1; }
 
       - name: Verify idempotent restart + boot-race guard
         run: |
