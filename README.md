@@ -1,5 +1,12 @@
 # Clusterio Docker
 
+> [!WARNING]
+> **This branch (`main`) is parked.** Active development, the CHANGELOG, and the `:latest`
+> images all live on [`factorio-2.1.8`](https://github.com/solarcloud7/clusterio-docker/tree/factorio-2.1.8)
+> — the repository's **default branch**. `main` is the npm-release line, frozen until upstream
+> Clusterio's npm packages support the current Factorio line. See the default branch's README
+> ("Branch model") for the full picture.
+
 Docker images for running [Clusterio](https://github.com/clusterio/clusterio) - a clustered Factorio server manager.
 
 ## Table of Contents
