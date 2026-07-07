@@ -18,6 +18,19 @@ Factorio versions when they change.
   bump can remove the protection with no error), asserts `BUILD_INFO.clusterioTarget`
   matches the target CI built, and asserts each host derived its non-overlapping game-port
   range from `HOST_ID` (host N → `34N00-34N99`).
+- CI: external-plugin lifecycle test — a committed fixture plugin
+  (`seed-data/external_plugins/ci_fixture`) proves npm install, the `@clusterio` dedup
+  strip (pitfall 10), keyword-gated auto-discovery (`clusterio-plugin` in `keywords` is
+  load-bearing — without it a plugin installs and silently never loads), and the plugin's
+  controller code actually running on a fresh cluster.
+- CI: buildx cache hygiene — per-image cache scopes (controller/host no longer evict each
+  other's layers) and a cleanup workflow that deletes a PR's caches when it closes.
+- **Fix: external-plugin npm install on custom-target images** — `/clusterio` is the pnpm
+  monorepo and its root `package.json` claims `external_plugins/*` as a workspace, so a bare
+  `npm install` in a mounted plugin dir operated on the whole monorepo and died on pnpm's
+  `catalog:` protocol. Every external-plugin install on custom images failed (masked by the
+  warn-and-continue). `install-plugins.sh` now passes `--workspaces=false`; the new
+  ci_fixture lifecycle test caught this on its first run.
 
 ## 2026-07-05
 

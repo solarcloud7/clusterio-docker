@@ -24,7 +24,13 @@ install_external_plugins() {
       # could ship a broken or stale bundle while the container still reported healthy (issue #5).
       # Keep going on failure so one bad plugin doesn't block the others, but emit a clear,
       # greppable warning so the failure is discoverable in `docker logs`.
-      if ! (cd "$plugin" && gosu clusterio npm install --omit=dev); then
+      #
+      # --workspaces=false is load-bearing on custom-target images: /clusterio is the pnpm
+      # monorepo whose root package.json declares external_plugins/* as a workspace, so a
+      # bare npm install here operates on the WHOLE monorepo and dies on pnpm's "catalog:"
+      # protocol (EUNSUPPORTEDPROTOCOL) — every external-plugin install silently failed.
+      # Harmless on the release target (no workspaces field). Caught by the ci_fixture test.
+      if ! (cd "$plugin" && gosu clusterio npm install --omit=dev --workspaces=false); then
         echo "  WARNING: plugin '$plugin_name' failed to install/build — its bundle may be broken or stale" >&2
       fi
 
