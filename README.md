@@ -1,7 +1,7 @@
 # Clusterio Docker
 
 [![Docker Build](https://github.com/solarcloud7/clusterio-docker/actions/workflows/docker-build.yml/badge.svg)](https://github.com/solarcloud7/clusterio-docker/actions/workflows/docker-build.yml)
-[![Clusterio](https://img.shields.io/badge/clusterio-2.0.0--alpha.26-blue)](https://www.npmjs.com/package/@clusterio/controller)
+[![Clusterio](https://img.shields.io/badge/clusterio-2.0.0--alpha.27-blue)](https://www.npmjs.com/package/@clusterio/controller)
 [![Controller image](https://img.shields.io/badge/ghcr.io-controller-24292f?logo=github)](https://github.com/solarcloud7/clusterio-docker/pkgs/container/clusterio-docker-controller)
 [![Host image](https://img.shields.io/badge/ghcr.io-host-24292f?logo=github)](https://github.com/solarcloud7/clusterio-docker/pkgs/container/clusterio-docker-host)
 
@@ -53,41 +53,48 @@ docker pull ghcr.io/solarcloud7/clusterio-docker-host:latest
 
 ### Image tags & provenance
 
-Tags are published on **two axes** so version drift is a deliberate choice, not a rebuild
-side-effect:
+Image versions **track the Clusterio version**, with a docker-layer revision (`-rN`) for rebuilds
+or fixes that ship on the same Clusterio version. Pick a moving tag for "newest", a revision pin
+for reproducibility:
 
 | Tag | Meaning | Mutability |
 |-----|---------|------------|
-| `:factorio-2.1.8-clusterio-2.0.0-alpha.26` | branch target **+** bundled Clusterio version | immutable pair — **pin this** |
-| `:factorio-2.1.8` | the branch's latest build | moves on every rebuild (bundled Clusterio can change under it) |
-| `:2.0.0-alpha.26` | bundled Clusterio version (default branch builds) | stable per Clusterio release |
-| `:latest` | default branch's latest build | moves |
+| `:2.0.0-alpha.27-r1` | Clusterio version **+** docker revision | **immutable pin — pin this** |
+| `:2.0.0-alpha.27` | bundled Clusterio version (`main` builds) | moves as the docker layer rebuilds |
+| `:latest` | newest `main` build | moves |
+| `:main` | newest `main` build (alias of `:latest`) | moves |
 
-> **What the `factorio-*` axis means**: these images bundle **no Factorio bits** (see licensing
-> note below — the host downloads the mod-pack's target *headless* version at runtime; the full
-> client is never downloaded by Clusterio and can only be baked at build time with credentials via
-> `INSTALL_FACTORIO_CLIENT`, and such images must stay private). So `factorio-2.1.8` denotes the
-> **configuration/compatibility target** — entrypoint defaults, seeded mod pack, DLC enable list
-> (e.g. `recycler` is a 2.1.x-specific dependency), and the Factorio version CI tests against —
-> not baked game content. The **Clusterio version is the content-bearing half** of the pair tag,
-> which is why `BUILD_INFO` records `clusterioVersion` and has no `factorioVersion` field.
+`-rN` resets to `r1` on each Clusterio bump; you cut a `2.0.0-alpha.27-rN` git tag to mint an
+immutable pin. `main` also publishes a convenience pair tag `:main-clusterio-<version>` (moves per
+rebuild). Custom/fork lines (see Branch model) publish under their branch name instead, e.g.
+`:factorio-2.2` + `:factorio-2.2-clusterio-<version>`.
 
-### Branch model (why the default branch is `factorio-2.1.8`, not `main`)
+> **The Clusterio version is the content-bearing half.** These images bundle **no Factorio bits**
+> (see licensing note below — the host downloads the mod-pack's target *headless* version at
+> runtime; the full client is never downloaded by Clusterio and can only be baked at build time
+> with credentials via `INSTALL_FACTORIO_CLIENT`, and such images must stay private). That is why
+> `BUILD_INFO` records `clusterioVersion` (and `clusterioTarget`) and has no `factorioVersion`
+> field — the Factorio version is a runtime property of the mod pack, not baked content. A
+> `factorio-*` **branch** tag (custom lines only) denotes a configuration/compatibility target
+> (entrypoint defaults, seeded mod pack, DLC enable list — e.g. `recycler` is a 2.1.x dependency —
+> and the Factorio version CI tests against), not baked game content.
 
-**The default branch is the actively-maintained Factorio line** — currently `factorio-2.1.8` —
-not `main`. This is deliberate (as of 2026-07-05) and not obvious out of the box:
+### Branch model
+
+**`main` is the active line** — the default branch, built from the **`release`** target (npm
+`@clusterio/*` packages, pinned via `CLUSTERIO_VERSION`). `:latest` and the Clusterio version tag
+publish from it.
 
 | Branch | Role | Build target |
 |--------|------|--------------|
-| `factorio-2.1.8` (**default**) | The active line: all hardening, docs, CHANGELOG, and issue templates live here; `latest` + the Clusterio version tag publish from it | `custom` (fork branch `solarcloud7/clusterio@factorio-2.1.8`) |
-| `main` | The npm-release line — **parked** until the npm release supports the current Factorio version (empirically: alpha.26 rejects 2.1-format mod `info.json` and lacks the `recycler` builtin) | `release` (npm `@clusterio/*`) |
-| future `factorio-*` | New Factorio lines branch from the previous one | `custom` from the matching fork branch |
+| `main` (**default**) | The active line: all hardening, docs, CHANGELOG, and issue templates live here; `:latest` + the Clusterio version tag publish from it | `release` (npm `@clusterio/*`) |
+| `factorio-*` | **Dormant.** A Factorio-line branch built from the matching fork branch — used **only when a new Factorio version outpaces npm support** (npm can lag; that's why `factorio-2.1.8` existed before Clusterio alpha.27 added 2.1). Reactivated by branching `factorio-<X.Y>` off `main`. | `custom` (matching `solarcloud7/clusterio` fork branch) |
+| `factorio-2.1.8` | **Archived.** The historical line that carried Factorio 2.1 before npm did; kept for reference, no longer the default. | `custom` (fork) |
 
-Practical consequences: `:latest` and the Clusterio version tag currently come from **custom
-(fork) builds** — `BUILD_INFO`'s `clusterioTarget` field always records which target produced a
-running image. When a Clusterio npm release lands that fully supports the current Factorio
-line, `main` absorbs the active line and the default may move back. If you're reading this on
-GitHub, you're already on the default (active) branch.
+`BUILD_INFO`'s `clusterioTarget` field always records which target produced a running image
+(`release` for `main`, `custom` for a `factorio-*` line). The `custom`/fork machinery is retained
+but dormant: if npm ever lags a future Factorio line again, branch `factorio-<X.Y>` off `main` and
+CI builds it from the fork automatically.
 
 Every image also carries the label `io.clusterio.version` (readable via
 `docker inspect -f '{{index .Config.Labels "io.clusterio.version"}}' <image>`) and a
@@ -256,7 +263,7 @@ These are set at build time via `docker compose build` or `--build-arg`. In dock
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `CLUSTERIO_TARGET` | `release` | `release` (npm packages) or `custom` (build from the bundled `clusterio/` source) |
-| `CLUSTERIO_VERSION` | `2.0.0-alpha.26` | Pinned Clusterio version for the `release` target — all `@clusterio/*` packages install at this version. Ignored by `custom`. |
+| `CLUSTERIO_VERSION` | `2.0.0-alpha.27` | Pinned Clusterio version for the `release` target — all `@clusterio/*` packages install at this version. Ignored by `custom`. |
 | `NODE_IMAGE` | `node:24-bookworm-slim@sha256:…` | Base Node image, pinned by digest for reproducible builds |
 | `BAKE_FACTORIO_HEADLESS` | `false` | Bake Factorio headless into the image. **Default `false`** — images ship no Factorio (Wube's EULA forbids redistributing it); Clusterio downloads it at runtime. Set `true` only for private/offline images. |
 | `FACTORIO_HEADLESS_TAG` | `stable` | Factorio headless version to bake (only used when `BAKE_FACTORIO_HEADLESS=true`) |

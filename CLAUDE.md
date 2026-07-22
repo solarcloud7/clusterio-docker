@@ -13,9 +13,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with th
 
 **Note**: GHCR image names include `-docker-` because the CI derives them from the repository name (`clusterio-docker`).
 
-**Clusterio version**: `release` builds are pinned to **`2.0.0-alpha.26`** via the `CLUSTERIO_VERSION` build arg (see Build Arguments). Bump that one value to upgrade. `custom`/non-main branch builds compile from the bundled `clusterio/` source instead.
+**Clusterio version**: `release` builds are pinned to **`2.0.0-alpha.27`** via the `CLUSTERIO_VERSION` build arg (see Build Arguments). Bump that one value to upgrade. `custom`/`factorio-*` branch builds compile from the bundled `clusterio/` source instead.
 
-**Factorio 2.1 support**: targeting Factorio **2.1.x** (e.g. `2.1.8`) requires the **`custom`** build — the bundled `clusterio/` fork carries the 2.1 patches (`ApiVersions` + `clusterio_lib` `factorio_version: "2.1"` variant + `Base Game/Space Age 2.1` default packs). Upstream Clusterio (npm `@clusterio/*`, incl. the latest alpha) has **not** added 2.1 support, so the `release` target still cannot run Factorio 2.1. Factorio version-locks mods by `major.minor`, so without the `clusterio_lib` 2.1 variant the library mod is disabled on a 2.1 server and nothing patches in.
+**Factorio 2.1 support**: npm Clusterio **`2.0.0-alpha.27`** natively runs Factorio **2.1.x** (e.g. `2.1.8`) — it carries `ApiVersions` `2.1`, the `clusterio_lib` `factorio_version: "2.1"` variant, the `Base Game/Space Age 2.1` default packs, and the `recycler` builtin. So the **default `release` target runs 2.1**; the `custom`/fork build is no longer required for it. (Historically it was: alpha.26 rejected 2.1-format mod `info.json` and lacked `recycler`, so 2.1 lived only in the `factorio-2.1.8` fork branch until alpha.27 upstreamed the fix.) The `custom` machinery is retained for the next Factorio line that npm may lag — see Branch model in README.md.
 
 ## Repository Structure
 
@@ -171,7 +171,7 @@ When the controller volume is wiped but host volumes persist, the controller gen
 | Argument | Default | Description |
 |----------|---------|-------------|
 | `CLUSTERIO_TARGET` | `release` | Build target: `release` (npm registry) or `custom` (local source in `clusterio/`) |
-| `CLUSTERIO_VERSION` | `2.0.0-alpha.26` | Pinned Clusterio version for the `release` target. All `@clusterio/*` packages install at this exact version. Ignored by the `custom` target. Bump to upgrade. |
+| `CLUSTERIO_VERSION` | `2.0.0-alpha.27` | Pinned Clusterio version for the `release` target. All `@clusterio/*` packages install at this exact version. Ignored by the `custom` target. Bump to upgrade. |
 | `NODE_IMAGE` | `node:24-bookworm-slim@sha256:…` | Base Node image, pinned by digest for reproducible builds. Refresh periodically for Debian/Node security patches (see comment in the Dockerfiles). |
 | `BAKE_FACTORIO_HEADLESS` | `false` | Bake the Factorio headless server into the image. **Default `false`** — the public image ships no Factorio (Wube's EULA forbids redistributing it) and Clusterio downloads the target version at runtime. Set `true` only for private/offline images you don't redistribute. |
 | `FACTORIO_HEADLESS_TAG` | `stable` | Factorio headless version to bake — **only used when `BAKE_FACTORIO_HEADLESS=true`** |
@@ -274,40 +274,41 @@ The GitHub Actions workflow (`.github/workflows/docker-build.yml`):
 
 ### Release Process
 
-**While `main` is parked** (see "Branch model" in README.md), releases happen on the **default
-branch** (`factorio-2.1.8`): PRs merged there publish `:latest` and the Clusterio version tag
-from **custom** (fork) builds. Do **not** push `v*` tags meanwhile — tag builds use the
-`release` target, so the semver tags would carry npm-based images that cannot run the current
-Factorio line.
+Releases happen on the default branch (`main`) and build the **`release`** target
+(`CLUSTERIO_TARGET=release`, npm packages, pinned to `CLUSTERIO_VERSION`).
 
-The npm-release flow below applies to `main` and resumes when an npm Clusterio release supports
-the current Factorio line (at which point `main` absorbs the active line and the default branch
-may move back — `:latest` always publishes from the default branch):
-
-Release builds use `CLUSTERIO_TARGET=release` (npm packages), pinned to `CLUSTERIO_VERSION`.
-
-1. **Bump the version** — set `ARG CLUSTERIO_VERSION` to the new Clusterio version in **both** `Dockerfile.controller` and `Dockerfile.host` (e.g. `2.0.0-alpha.26`). This single value pins the `@clusterio/*` npm packages **and** the published image tag. Update the version references in this file and `docs/consumer-integration.md` to match.
+1. **Bump the version** — set `ARG CLUSTERIO_VERSION` to the new Clusterio version in **both** `Dockerfile.controller` and `Dockerfile.host` (e.g. `2.0.0-alpha.27`). This single value pins the `@clusterio/*` npm packages **and** the published image tag. Update the version references in this file, `README.md`, and `docs/consumer-integration.md` to match (CI's version-assert gate fails otherwise).
 2. **Open a PR → merge to `main`.** On a PR, CI builds the `release` target and runs the full integration suite (seeding, instance start, idempotent restart) — exactly what will publish. Merge once green.
-3. **Publish is automatic on the `main` push.** Both images publish to GHCR tagged `:latest` **and** `:<CLUSTERIO_VERSION>` (e.g. `:2.0.0-alpha.26`). The version tag is read from the `CLUSTERIO_VERSION` build arg, so it always matches what's installed.
-4. **Make packages public (one-time).** GHCR packages default to private. To allow public `docker pull`: GitHub → profile → Packages → each package (`clusterio-docker-controller`, `clusterio-docker-host`) → Package settings → Change visibility → Public.
+3. **Publish is automatic on the `main` push.** Both images publish to GHCR tagged `:latest` **and** `:<CLUSTERIO_VERSION>` (e.g. `:2.0.0-alpha.27`). The version tag is read from the `CLUSTERIO_VERSION` build arg, so it always matches what's installed. These are **moving** tags — a rebuild on the same Clusterio version overwrites them.
+4. **Cut an immutable revision pin** — to publish a reproducible pin, `git tag <CLUSTERIO_VERSION>-r<N>` (e.g. `2.0.0-alpha.27-r1`) and push the tag. CI's tag build publishes `:<CLUSTERIO_VERSION>-r<N>` verbatim on the `release` target. `-rN` resets to `r1` on each Clusterio bump; increment it for docker-layer rebuilds/fixes that ship on the same Clusterio version. See "Versioning" below.
+5. **Make packages public (one-time).** GHCR packages default to private. To allow public `docker pull`: GitHub → profile → Packages → each package (`clusterio-docker-controller`, `clusterio-docker-host`) → Package settings → Change visibility → Public.
 
-### Versioning (this repo's own version)
+### Versioning (Clusterio version + docker revision)
 
-clusterio-docker has its **own** SemVer (git tags `vMAJOR.MINOR.PATCH`), independent of Clusterio's alpha version. It is currently at **`v1.1.0`**; the alpha.26 upgrade and the EULA-compliant runtime Factorio download are untagged and warrant the next tag — a **major** bump, since dropping the bundled Factorio changes image behavior. Pushing a `v*` tag publishes via `type=semver`, so each release carries **both** axes:
+clusterio-docker's version **tracks the Clusterio version**, with a docker-layer revision suffix
+`-rN` for rebuilds/fixes that ship on the same Clusterio version. There is **no** separate repo
+SemVer (the old `vMAJOR.MINOR.PATCH` scheme is retired; the `v1.1.0` git tag stays in history but
+no new `v*` tags are cut). Tags carried by a build:
 
-- `:2.0.0`, `:2.0`, `:2` — this repo's version (from the git tag)
-- `:2.0.0-alpha.26` — the bundled Clusterio version (from the `CLUSTERIO_VERSION` build arg)
-- `:latest` — newest default branch (currently `factorio-2.1.8`)
+- `:<CLUSTERIO_VERSION>` — e.g. `:2.0.0-alpha.27` — the bundled Clusterio version. **Moves** as the docker layer rebuilds.
+- `:<CLUSTERIO_VERSION>-rN` — e.g. `:2.0.0-alpha.27-r1` — the **immutable** pin (cut a git tag to mint one). `N` resets to `r1` on each Clusterio bump; bump it for docker-layer changes on the same Clusterio version.
+- `:latest`, `:main` — newest `main` build. Move.
 
-Bump rules: **major** = breaking image usage (env/volume/behavior), **minor** = new capability or a Clusterio bump, **patch** = fixes/docs.
-
-> Heads-up: a repo major of `v2.0.0` mints a `:2.0.0` tag that resembles Clusterio/Factorio 2.0 (distinct from `:2.0.0-alpha.26`). If that's confusing, a minor (`v1.2.0`) avoids it.
+**Revision (`-rN`) discipline**: increment `-rN` for any image-affecting change on an unchanged
+Clusterio version (entrypoint/seeding/compose fixes, security rebuilds). A breaking
+docker-interface change (env/volume/behavior) is signalled by the CHANGELOG notice (the changelog
+gate enforces one) plus the `-rN` bump — consumers pin `:<version>-rN` and read CHANGELOG before
+moving to a new pin. There is no separate "major" signal.
 
 **Note:** the Clusterio (npm) version is independent of the Factorio version Clusterio downloads at runtime (or, when baking, `FACTORIO_HEADLESS_TAG`).
 
 ### Branch-Based Custom Builds
 
-Non-main branch **pushes** automatically build from the Clusterio fork instead of npm packages (pull requests, `main`, and tags build the `release` target so CI validates exactly what gets published):
+This is the **dormant `custom`/fork path** — retained for a future Factorio line that npm may lag
+(branch `factorio-<X.Y>` off `main`) and for testing a Clusterio fork branch. The active default
+`main` builds `release` (npm); only the paths below build `custom`.
+
+Non-main branch **pushes** automatically build from the Clusterio fork instead of npm packages (pull requests into `main`, `main`, and tags build the `release` target so CI validates exactly what gets published):
 
 1. CI clones `https://github.com/solarcloud7/clusterio` at the **matching branch name**
 2. If the branch doesn't exist in the fork, it falls back to the fork's **default branch** (`master`)
@@ -327,7 +328,7 @@ git push  # → CI builds :my-feature images from the fork's branch
 #   image: ghcr.io/solarcloud7/clusterio-docker-host:my-feature
 ```
 
-Main branch, tags, and pull requests use `CLUSTERIO_TARGET=release` (npm registry packages); only non-main branch pushes build `custom`.
+`main`, tags, and PRs into `main` use `CLUSTERIO_TARGET=release` (npm registry packages); non-main branch pushes and PRs into `factorio-*` branches build `custom`.
 
 ## Included Clusterio Plugins
 

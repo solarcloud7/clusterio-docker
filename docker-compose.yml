@@ -6,8 +6,8 @@
 # overlay:  docker compose -f docker-compose.yml -f docker-compose.dev.yml build
 #
 # Pin a specific image build by setting CLUSTERIO_IMAGE_TAG in .env — for
-# production prefer the immutable pair tag (e.g.
-# factorio-2.1.8-clusterio-2.0.0-alpha.26); the default branch tag moves.
+# production prefer the immutable revision pin (e.g. 2.0.0-alpha.27-r1); the
+# moving tags (:latest, :2.0.0-alpha.27) are rebuilt in place.
 #
 # To add more hosts:
 #   1. Increment HOST_COUNT in controller environment
@@ -26,7 +26,7 @@
 
 # Template anchor for host services (reduces duplication)
 x-host-base: &host-base
-  image: ghcr.io/solarcloud7/clusterio-docker-host:${CLUSTERIO_IMAGE_TAG:-factorio-2.1.8}
+  image: ghcr.io/solarcloud7/clusterio-docker-host:${CLUSTERIO_IMAGE_TAG:-latest}
   env_file:
     - .env
   networks:
@@ -40,7 +40,7 @@ x-host-base: &host-base
 
 services:
   clusterio-controller:
-    image: ghcr.io/solarcloud7/clusterio-docker-controller:${CLUSTERIO_IMAGE_TAG:-factorio-2.1.8}
+    image: ghcr.io/solarcloud7/clusterio-docker-controller:${CLUSTERIO_IMAGE_TAG:-latest}
     env_file:
       - .env
     container_name: clusterio-controller

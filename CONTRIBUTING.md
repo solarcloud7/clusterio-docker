@@ -26,17 +26,16 @@ Please make sure CI is green before requesting a merge.
 
 ## Branches & CI targets
 
-**The default branch is the active Factorio line (`factorio-2.1.8`), not `main`** — see
-README → "Branch model". Base PRs on the default branch unless you're specifically fixing the
-npm-release line: `main` is parked until the npm release supports the current Factorio version,
-and its two remaining jobs are release-target validation and (eventually) absorbing the active
-line when npm catches up.
+**The default branch is `main`, the active line** — built from the `release` (npm) target — see
+README → "Branch model". Base PRs on `main`. The `custom`/fork target is retained but **dormant**:
+a `factorio-<X.Y>` branch builds `custom` only when a new Factorio version outpaces npm support
+(as `factorio-2.1.8` did before Clusterio alpha.27 added 2.1).
 
 - **Pull requests into `main`**, **`main`**, and **tags** build the `release` target
   (npm-published `@clusterio/*` packages, pinned via `CLUSTERIO_VERSION`).
 - **Pull requests into `factorio-*` branches** build the `custom` target from the fork branch
-  matching the PR's **base** — faithful to what the merge will publish (the npm release can lag
-  the fork's Factorio-version fixes, e.g. 2.1 mod-info parsing). PR builds never push images.
+  matching the PR's **base** — faithful to what the merge will publish (used when the npm release
+  lags a new Factorio version). PR builds never push images.
 - **Non-main branch _pushes_** build the `custom` target from the matching branch
   of the `solarcloud7/clusterio` fork (falling back to the fork's default branch).
 - **Slash-named branches (`feat/...`, `docs/...`) intentionally get no push CI** — the `'*'`

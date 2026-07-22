@@ -11,6 +11,26 @@ change notice: container → sha → this file.
 Format: `## YYYY-MM-DD` heading + short bullets. Always state the Clusterio /
 Factorio versions when they change.
 
+## 2026-07-22
+
+- **Clusterio `2.0.0-alpha.26` → `2.0.0-alpha.27`** (`CLUSTERIO_VERSION`, both Dockerfiles).
+  npm alpha.27 upstreams the Factorio 2.1 support the fork carried (`ApiVersions` `2.1`, Base
+  Game/Space Age 2.1 default packs, `clusterio_lib` 2.1 variant v2.0.21, the `recycler` builtin
+  alpha.26 lacked). CI proved it end-to-end on the `release` target.
+- **`main` un-parked — it is again the default/active line, built from `release` (npm).**
+  `:latest` + the Clusterio version tag now publish from **release/npm** alpha.27 (were custom/fork
+  builds from `factorio-2.1.8`). The `custom`/fork machinery is **retained but dormant** — kept for
+  a future Factorio line that npm may lag (branch `factorio-<X.Y>` off `main`); `factorio-2.1.8` is
+  archived. `BUILD_INFO.clusterioTarget` records which target built any image.
+- **Versioning tracks the Clusterio version + a docker `-rN` revision; the independent repo SemVer
+  is retired.** Images tag as `:<clusterio-version>` (moves) and `:<clusterio-version>-rN`
+  (immutable pin, cut from a git tag `2.0.0-alpha.27-rN`). CI: `v*`/`type=semver` tag handling
+  replaced by `type=ref,event=tag` + a guard that a revision tag matches the baked
+  `CLUSTERIO_VERSION`.
+- **`docker-compose.yml`**: default image tag `${CLUSTERIO_IMAGE_TAG:-factorio-2.1.8}` →
+  `:-latest`, so an unconfigured `docker compose up` pulls the new npm-based default instead of the
+  fork build. `.env.example` pin examples updated to the `-rN` scheme.
+
 ## 2026-07-06
 
 - CI only (no image content change): added silent-degradation tripwires — asserts the

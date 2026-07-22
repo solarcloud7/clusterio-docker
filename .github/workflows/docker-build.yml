@@ -6,7 +6,9 @@ on:
     # GitHub's single-star stops at '/'. That keeps feature branches from publishing
     # image tags. Pre-merge validation for release branches comes from pull_request below.
     branches: ['*']
-    tags: ['v*']
+    # Immutable revision pins: git tag <CLUSTERIO_VERSION>-r<N> (e.g. 2.0.0-alpha.27-r1)
+    # → published verbatim on the release target. Replaces the retired v* SemVer tags.
+    tags: ['*-r[0-9]*']
   pull_request:
     branches: [main, 'factorio-*']
 
@@ -46,11 +48,13 @@ jobs:
           fi
           echo "Changelog gate OK."
 
-      # factorio-* branches carry 2.1-era fixes that exist in the fork but NOT yet
-      # in the npm release (e.g. lenient mod version parsing, the recycler builtin
-      # — empirically: npm alpha.26 rejects 2.1-format mod info.json). PRs into
-      # those branches must therefore build the SAME custom target the merge will
-      # publish, cloning the fork branch matching the PR's BASE.
+      # The active line is `main`, built from the RELEASE (npm) target. The custom/fork
+      # path below is DORMANT — kept for a future Factorio line that npm may lag: a
+      # factorio-* branch carries Factorio-version fixes that exist in the fork but not
+      # yet in the npm release (as factorio-2.1.8 did before Clusterio alpha.27 added
+      # 2.1 — npm alpha.26 rejected 2.1-format mod info.json and lacked recycler). PRs
+      # into those branches build the SAME custom target the merge will publish, cloning
+      # the fork branch matching the PR's BASE.
       - name: Clone Clusterio fork (non-main branch pushes + factorio-* PRs)
         if: >-
           (github.event_name == 'push' && github.ref != 'refs/heads/main' && !startsWith(github.ref, 'refs/tags/')) ||
@@ -95,19 +99,34 @@ jobs:
           grep -q "$V" README.md \
             || { echo "README is out of date: no reference to Clusterio $V (badge/tag examples). Update README.md alongside the CLUSTERIO_VERSION bump."; exit 1; }
 
+      # A revision pin tag (e.g. 2.0.0-alpha.27-r1) must match the CLUSTERIO_VERSION
+      # baked into the image — otherwise the immutable pin would lie about its contents.
+      - name: Assert revision-pin tag matches CLUSTERIO_VERSION
+        if: github.ref_type == 'tag'
+        run: |
+          V="${{ steps.clusterio_version.outputs.version }}"
+          T="${{ github.ref_name }}"
+          case "$T" in
+            "$V"-r[0-9]*) echo "OK: tag '$T' pins CLUSTERIO_VERSION '$V'";;
+            *) echo "::error::Git tag '$T' must be '<CLUSTERIO_VERSION>-r<N>' with CLUSTERIO_VERSION=$V (from Dockerfile.host). Bump the Dockerfiles or fix the tag."; exit 1;;
+          esac
+
       - name: Extract metadata for Controller
         id: meta-controller
         uses: docker/metadata-action@v6
         with:
           images: ${{ env.REGISTRY }}/${{ env.CONTROLLER_IMAGE }}
+          # latest=false: :latest is controlled solely by the is_default_branch raw tag
+          # below. Without this, a git-tag (-rN pin) push would auto-move :latest onto the
+          # pinned build.
+          flavor: latest=false
           tags: |
             type=ref,event=branch
             type=ref,event=pr
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
+            type=ref,event=tag
             type=raw,value=latest,enable={{is_default_branch}}
             type=raw,value=${{ steps.clusterio_version.outputs.version }},enable={{is_default_branch}}
-            type=raw,value=${{ github.ref_name }}-clusterio-${{ steps.clusterio_version.outputs.version }},enable=${{ github.event_name != 'pull_request' }}
+            type=raw,value=${{ github.ref_name }}-clusterio-${{ steps.clusterio_version.outputs.version }},enable=${{ github.event_name != 'pull_request' && github.ref_type == 'branch' }}
           labels: |
             org.opencontainers.image.title=Clusterio Controller
             org.opencontainers.image.description=Clusterio cluster controller with web UI and API
@@ -118,14 +137,17 @@ jobs:
         uses: docker/metadata-action@v6
         with:
           images: ${{ env.REGISTRY }}/${{ env.HOST_IMAGE }}
+          # latest=false: :latest is controlled solely by the is_default_branch raw tag
+          # below. Without this, a git-tag (-rN pin) push would auto-move :latest onto the
+          # pinned build.
+          flavor: latest=false
           tags: |
             type=ref,event=branch
             type=ref,event=pr
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
+            type=ref,event=tag
             type=raw,value=latest,enable={{is_default_branch}}
             type=raw,value=${{ steps.clusterio_version.outputs.version }},enable={{is_default_branch}}
-            type=raw,value=${{ github.ref_name }}-clusterio-${{ steps.clusterio_version.outputs.version }},enable=${{ github.event_name != 'pull_request' }}
+            type=raw,value=${{ github.ref_name }}-clusterio-${{ steps.clusterio_version.outputs.version }},enable=${{ github.event_name != 'pull_request' && github.ref_type == 'branch' }}
           labels: |
             org.opencontainers.image.title=Clusterio Host
             org.opencontainers.image.description=Clusterio host with Factorio headless server
@@ -221,8 +243,8 @@ jobs:
           FACTORIO_USERNAME: ${{ secrets.FACTORIO_USERNAME }}
           FACTORIO_TOKEN: ${{ secrets.FACTORIO_TOKEN }}
 
-      # Same custom-target rule as the build job: factorio-* PR tests must run
-      # the fork core the merge will publish (npm alpha.26 fails 2.1 mod parsing).
+      # Same custom-target rule as the build job (dormant path): a factorio-* PR test
+      # must run the fork core the merge will publish (used when npm lags a Factorio line).
       - name: Clone Clusterio fork (non-main branch pushes + factorio-* PRs)
         if: >-
           (github.event_name == 'push' && github.ref != 'refs/heads/main' && !startsWith(github.ref, 'refs/tags/')) ||
