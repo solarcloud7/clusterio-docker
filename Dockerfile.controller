@@ -10,7 +10,7 @@ ARG CLUSTERIO_TARGET=release
 # Clusterio version for the release target (npm registry packages).
 # Pinned for reproducible builds — bump deliberately on each Clusterio release.
 # Ignored by the custom target, which builds from the clusterio/ source instead.
-ARG CLUSTERIO_VERSION=2.0.0-alpha.26
+ARG CLUSTERIO_VERSION=2.0.0-alpha.27
 
 # Base image pinned by digest for reproducible builds. The tag is kept for
 # readability; the digest is what's actually resolved. Refresh both periodically
@@ -72,7 +72,7 @@ RUN pnpm install
 FROM base AS release
 
 # Re-declare to bring the global ARG into this stage's scope
-ARG CLUSTERIO_VERSION=2.0.0-alpha.26
+ARG CLUSTERIO_VERSION=2.0.0-alpha.27
 
 USER clusterio
 
@@ -115,7 +115,7 @@ USER root
 # (docker exec <c> cat /clusterio/BUILD_INFO) instead of grepping node_modules.
 # Re-declare ARGs to bring them into this stage's scope; BUILD_REVISION is
 # injected by CI (github.sha) and busts this layer's cache so builtAt is honest.
-ARG CLUSTERIO_VERSION=2.0.0-alpha.26
+ARG CLUSTERIO_VERSION=2.0.0-alpha.27
 ARG CLUSTERIO_TARGET=release
 ARG BUILD_REVISION=unknown
 RUN printf '{\n  "clusterioVersion": "%s",\n  "clusterioTarget": "%s",\n  "gitSha": "%s",\n  "builtAt": "%s"\n}\n' \

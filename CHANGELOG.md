@@ -11,6 +11,17 @@ change notice: container → sha → this file.
 Format: `## YYYY-MM-DD` heading + short bullets. Always state the Clusterio /
 Factorio versions when they change.
 
+## 2026-07-22
+
+- **Clusterio `2.0.0-alpha.26` → `2.0.0-alpha.27`** (`CLUSTERIO_VERSION` in both
+  Dockerfiles). npm alpha.27 upstreams the Factorio 2.1 support the fork carried:
+  `ApiVersions` accepts `2.1`, Base Game/Space Age 2.1 default packs, the
+  `clusterio_lib` 2.1 variant (v2.0.21), and the `recycler` builtin that alpha.26
+  lacked. Probe toward un-parking `main`: opened as a PR into `main` this builds the
+  **release** (npm) target so CI validates whether npm alpha.27 runs 2.1 end-to-end —
+  if green, the custom fork fix can be dropped. On `factorio-*` builds the version is
+  ignored (custom target), so this is a no-op there.
+
 ## 2026-07-06
 
 - CI only (no image content change): added silent-degradation tripwires — asserts the
