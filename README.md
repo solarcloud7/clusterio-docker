@@ -1,7 +1,7 @@
 # Clusterio Docker
 
 [![Docker Build](https://github.com/solarcloud7/clusterio-docker/actions/workflows/docker-build.yml/badge.svg)](https://github.com/solarcloud7/clusterio-docker/actions/workflows/docker-build.yml)
-[![Clusterio](https://img.shields.io/badge/clusterio-2.0.0--alpha.26-blue)](https://www.npmjs.com/package/@clusterio/controller)
+[![Clusterio](https://img.shields.io/badge/clusterio-2.0.0--alpha.27-blue)](https://www.npmjs.com/package/@clusterio/controller)
 [![Controller image](https://img.shields.io/badge/ghcr.io-controller-24292f?logo=github)](https://github.com/solarcloud7/clusterio-docker/pkgs/container/clusterio-docker-controller)
 [![Host image](https://img.shields.io/badge/ghcr.io-host-24292f?logo=github)](https://github.com/solarcloud7/clusterio-docker/pkgs/container/clusterio-docker-host)
 
@@ -58,9 +58,9 @@ side-effect:
 
 | Tag | Meaning | Mutability |
 |-----|---------|------------|
-| `:factorio-2.1.8-clusterio-2.0.0-alpha.26` | branch target **+** bundled Clusterio version | immutable pair — **pin this** |
+| `:factorio-2.1.8-clusterio-2.0.0-alpha.27` | branch target **+** bundled Clusterio version | immutable pair — **pin this** |
 | `:factorio-2.1.8` | the branch's latest build | moves on every rebuild (bundled Clusterio can change under it) |
-| `:2.0.0-alpha.26` | bundled Clusterio version (default branch builds) | stable per Clusterio release |
+| `:2.0.0-alpha.27` | bundled Clusterio version (default branch builds) | stable per Clusterio release |
 | `:latest` | default branch's latest build | moves |
 
 > **What the `factorio-*` axis means**: these images bundle **no Factorio bits** (see licensing
@@ -256,7 +256,7 @@ These are set at build time via `docker compose build` or `--build-arg`. In dock
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `CLUSTERIO_TARGET` | `release` | `release` (npm packages) or `custom` (build from the bundled `clusterio/` source) |
-| `CLUSTERIO_VERSION` | `2.0.0-alpha.26` | Pinned Clusterio version for the `release` target — all `@clusterio/*` packages install at this version. Ignored by `custom`. |
+| `CLUSTERIO_VERSION` | `2.0.0-alpha.27` | Pinned Clusterio version for the `release` target — all `@clusterio/*` packages install at this version. Ignored by `custom`. |
 | `NODE_IMAGE` | `node:24-bookworm-slim@sha256:…` | Base Node image, pinned by digest for reproducible builds |
 | `BAKE_FACTORIO_HEADLESS` | `false` | Bake Factorio headless into the image. **Default `false`** — images ship no Factorio (Wube's EULA forbids redistributing it); Clusterio downloads it at runtime. Set `true` only for private/offline images. |
 | `FACTORIO_HEADLESS_TAG` | `stable` | Factorio headless version to bake (only used when `BAKE_FACTORIO_HEADLESS=true`) |
