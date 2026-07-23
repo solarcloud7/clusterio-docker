@@ -21,6 +21,14 @@ WAIT_INTERVAL=5
 mkdir -p "$DATA_DIR"
 chown -R clusterio:clusterio "$DATA_DIR"
 
+# Honest readiness: the healthcheck's connected-marker is per-boot state —
+# clear any stale copy before the guard can re-establish it.
+rm -f /run/clusterio-connected
+
+# Mirror Clusterio's on-disk host log to stdout (CLUSTERIO_LOG_TO_STDOUT).
+source /scripts/stream-logs.sh
+start_log_streamer /clusterio/logs/host host
+
 # Handle external plugins if mounted
 source /scripts/install-plugins.sh
 install_external_plugins "$EXTERNAL_PLUGINS_DIR"
@@ -89,6 +97,14 @@ else
     echo "No game client present — using headless directory $FACTORIO_DIR (auto-update enabled)"
 fi
 
+# Config-contradiction guard: EXPORT_HOST designates a host to run export-data,
+# which needs the full game client — SKIP_CLIENT=true on that same host
+# guarantees blank web-UI icons via a distant, confusing failure. Warn at the
+# source instead (docs/asset-export.md).
+if [ "${EXPORT_HOST:-0}" = "$HOST_ID" ] && [ "${SKIP_CLIENT:-false}" = "true" ]; then
+  echo "WARNING: EXPORT_HOST=$EXPORT_HOST designates THIS host ($HOST_NAME) for export-data, but SKIP_CLIENT=true forces headless — export will fail and web-UI icons will be blank (docs/asset-export.md)" >&2
+fi
+
 # Diagnostic: report which Factorio version(s) are present in the resolved directory. Clusterio
 # resolves the Factorio binary by version, so a mismatch between what is installed here and an
 # instance's pinned `factorio.version` is a common — and otherwise hard to diagnose — cause of
@@ -109,6 +125,100 @@ report_factorio_versions() {
     echo "Factorio install(s) under $dir: ${found:-none (will be downloaded at runtime)}"
 }
 report_factorio_versions "$FACTORIO_DIR"
+
+# ----------------------------------------------------------------------------
+# Boot-race guard.
+# An instance that auto-starts before this host completes its controller
+# handshake silently skips instance plugins — no error, IPC just goes nowhere
+# (README: "Operational note: the instance/plugin boot race"). This guard
+# mechanizes the manual stop/start protocol: once the controller reports this
+# host connected, it restarts any of this host's instances whose startedAtMs
+# PREDATES the handshake. Instances started after (e.g. by first-run seeding)
+# are untouched, so healthy boots are a no-op — the bounce is surgical.
+# Requires the shared tokens volume (config-control.json); standalone hosts
+# without it skip quietly and the manual protocol still applies.
+# The true fix (loud failure in Clusterio core) is tracked upstream.
+# ----------------------------------------------------------------------------
+CONTROL_CONFIG="${CONTROL_CONFIG:-$TOKENS_DIR/config-control.json}"
+# The shared control config is CONTROLLER-LOCAL: create-ctl-config bakes
+# controller_url=http://localhost:8080/, which from a host container points at
+# the host itself — and clusterioctl HANGS on it rather than refusing (#24's
+# second root cause). The guard derives a host-reachable copy using the same
+# CONTROLLER_URL this entrypoint configures clusteriohost with.
+GUARD_CTL_CONFIG="$DATA_DIR/.guard-control.json"
+GUARD_CONTROLLER_URL="${CONTROLLER_URL:-http://clusterio-controller:${CONTROLLER_HTTP_PORT:-8080}/}"
+GUARD_LOG="$DATA_DIR/boot-race-guard.log"
+
+ctl_ro() {
+    # Hard-bounded: clusterioctl has no client-side timeout and HANGS indefinitely
+    # against an unreachable or mid-boot controller (#24 — the guard's first
+    # host-list call froze forever, so neither progress nor the deadline message
+    # ever appeared). timeout's exit 124 just makes the poll loops iterate.
+    timeout -k 5 25 gosu clusterio npx clusterioctl --log-level error "$@" --config "$GUARD_CTL_CONFIG" 2>/dev/null
+}
+
+# Guard messages go to BOTH stdout and a file: if stdout capture ever fails,
+# the file still proves whether (and how far) the guard ran (#24 discriminator).
+guard_log() {
+    echo "boot-race guard: $*"
+    echo "$(date -u +%FT%TZ) $*" >> "$GUARD_LOG" 2>/dev/null || true
+}
+
+boot_race_guard() {
+    # Wall-clock deadline (SECONDS is bash's elapsed timer): each ctl_ro poll can
+    # itself burn up to ~25s in timeout, so counting sleeps alone would stretch
+    # the nominal deadline to many minutes of real time.
+    local deadline=$((SECONDS + 240)) T inst w
+    guard_log "started (pid $$, host $HOST_NAME/$HOST_ID)"
+    while [ ! -f "$CONTROL_CONFIG" ]; do
+        if [ "$SECONDS" -ge "$deadline" ]; then
+            guard_log "no control config appeared (standalone host?) — skipping"
+            return 0
+        fi
+        sleep 5
+    done
+    if ! node -e '
+        const fs = require("fs");
+        const c = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
+        c["control.controller_url"] = process.argv[3];
+        fs.writeFileSync(process.argv[2], JSON.stringify(c, null, "\t"));
+    ' "$CONTROL_CONFIG" "$GUARD_CTL_CONFIG" "$GUARD_CONTROLLER_URL" 2>/dev/null; then
+        guard_log "could not derive a host-reachable control config — skipping"
+        return 0
+    fi
+    guard_log "control config present (rewritten controller_url -> $GUARD_CONTROLLER_URL) — waiting for controller to report this host connected"
+    until ctl_ro host list | awk -F'|' -v n="$HOST_NAME" \
+        'function t(s){gsub(/^ +| +$/,"",s);return s} NR>2 && t($2)==n && t($4)=="true"{ok=1} END{exit !ok}'; do
+        if [ "$SECONDS" -ge "$deadline" ]; then
+            guard_log "host never reported connected within the deadline — skipping"
+            return 0
+        fi
+        sleep 5
+    done
+    T=$(node -e 'console.log(Date.now())')
+    # Honest readiness: the image healthcheck requires this marker (when the
+    # shared tokens volume is present) — "container up" now means "connected".
+    touch /run/clusterio-connected 2>/dev/null || true
+    guard_log "handshake confirmed at $T — checking for instances started before it"
+    ctl_ro instance list | awk -F'|' -v hid="$HOST_ID" -v T="$T" \
+        'function t(s){gsub(/^ +| +$/,"",s);return s} NR>2 && t($3)==hid && (t($5)=="running"||t($5)=="starting") && t($7)+0>0 && t($7)+0<T {print t($1)}' \
+    | while IFS= read -r inst; do
+        guard_log "'$inst' started before the handshake — restarting it so plugins register"
+        ctl_ro instance stop "$inst" || true
+        w=$((SECONDS + 90))
+        until ctl_ro instance list | awk -F'|' -v i="$inst" \
+            'function t(s){gsub(/^ +| +$/,"",s);return s} NR>2 && t($1)==i && t($5)=="stopped"{ok=1} END{exit !ok}'; do
+            if [ "$SECONDS" -ge "$w" ]; then
+                guard_log "'$inst' did not stop within the wait budget — leaving it as-is"
+                break
+            fi
+            sleep 3
+        done
+        ctl_ro instance start "$inst" || true
+        guard_log "'$inst' restarted after handshake"
+    done
+    guard_log "complete"
+}
 
 get_token() {
     # Priority 1: Environment variable (for standalone container usage)
@@ -156,6 +266,7 @@ if [ -f "$CONFIG_PATH" ]; then
                 gosu clusterio npx clusteriohost --log-level error config set host.factorio_directory "$FACTORIO_DIR" --config "$CONFIG_PATH"
             fi
             echo "Host already configured, starting..."
+            boot_race_guard &
             exec gosu clusterio npx clusteriohost run --config "$CONFIG_PATH"
         fi
     fi
@@ -194,4 +305,5 @@ gosu clusterio npx clusteriohost --log-level error config set host.instances_dir
 gosu clusterio npx clusteriohost --log-level error config set host.factorio_port_range "$FACTORIO_PORT_RANGE" --config "$CONFIG_PATH"
 
 # Start the host
+boot_race_guard &
 exec gosu clusterio npx clusteriohost run --config "$CONFIG_PATH"

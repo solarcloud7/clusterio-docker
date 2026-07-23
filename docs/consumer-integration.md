@@ -6,14 +6,27 @@ How to use clusterio-docker images in a downstream project.
 
 | Tag | Source | Use Case |
 |-----|--------|----------|
-| `latest` / `main` | npm registry (`@clusterio/*`), pinned to **`2.0.0-alpha.25`** | Stable, published Clusterio |
-| `<branch>` | Built from fork branch `solarcloud7/clusterio:<branch>` on a **non-main branch push** (falls back to the fork's default branch, `master`). PRs, `main`, and tags build the `release` target. | Custom builds from a Clusterio fork branch |
+| `latest` / `main` | npm registry (`@clusterio/*`), pinned to **`2.0.0-alpha.27`** — **moves** as the docker layer rebuilds | Stable, published Clusterio (newest) |
+| `2.0.0-alpha.27` | Same as `latest` — the bundled Clusterio version; **moves** on rebuild | Track a Clusterio version |
+| `2.0.0-alpha.27-rN` | An **immutable** revision pin (cut from a git tag); `-rN` bumps for docker-layer fixes on the same Clusterio version | **Production — pin this** |
+| `<branch>` | Built from fork branch `solarcloud7/clusterio:<branch>` on a **non-main branch push** (falls back to the fork's default branch, `master`). PRs into `main`, `main`, and tags build the `release` target. | Dormant `custom`/fork path (a `factorio-*` line when npm lags a new Factorio version) |
 
 ```yaml
 # Example: pull the stable images
 image: ghcr.io/solarcloud7/clusterio-docker-controller:latest
 image: ghcr.io/solarcloud7/clusterio-docker-host:latest
 ```
+
+> **Production: pin `:<version>-rN`, not `:latest` or the bare version.** `:latest`,
+> `:main`, and `:<version>` are **moving** tags — a rebuild replaces them in place, so an
+> unpinned `docker compose up -d`/`pull` can change the running image (and its lineage)
+> under you. Only `:<version>-rN` is immutable. This repo's default `docker-compose.yml`
+> uses `:latest` for zero-config first runs; override `CLUSTERIO_IMAGE_TAG=<version>-rN` in
+> `.env` for anything you depend on.
+
+> **Migrating off old `:1` / `:1.x` / `:1.x.y` tags:** the independent repo-SemVer tag axis
+> is **retired** — those tags are frozen at their last build and receive **no** further
+> updates. Re-pin to `:<version>-rN` (e.g. `:2.0.0-alpha.27-r1`).
 
 > **Note:** Image names include `-docker-` (derived from the repo name `clusterio-docker`).
 
@@ -44,7 +57,7 @@ services:
       - INIT_CLUSTERIO_ADMIN=your_username  # Required on first run
       - HOST_COUNT=1                        # Number of hosts to generate tokens for
       - EXPORT_HOST=1                       # Which host has the game client (0 = skip)
-      - DEFAULT_MOD_PACK=Space Age 2.0
+      - DEFAULT_MOD_PACK=Space Age 2.1
 
   clusterio-host-1:
     image: ghcr.io/solarcloud7/clusterio-docker-host:latest

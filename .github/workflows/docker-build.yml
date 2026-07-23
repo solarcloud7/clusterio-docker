@@ -2,10 +2,15 @@ name: Build and Push Docker Images
 
 on:
   push:
+    # NOTE: '*' deliberately does NOT match slash-named branches (feat/..., docs/...) —
+    # GitHub's single-star stops at '/'. That keeps feature branches from publishing
+    # image tags. Pre-merge validation for release branches comes from pull_request below.
     branches: ['*']
-    tags: ['v*']
+    # Immutable revision pins: git tag <CLUSTERIO_VERSION>-r<N> (e.g. 2.0.0-alpha.27-r1)
+    # → published verbatim on the release target. Replaces the retired v* SemVer tags.
+    tags: ['*-r[0-9]*']
   pull_request:
-    branches: [main]
+    branches: [main, 'factorio-*']
 
 env:
   REGISTRY: ghcr.io
@@ -22,11 +27,40 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
+        with:
+          fetch-depth: 0   # full history: the changelog gate diffs the pushed range
 
-      - name: Clone Clusterio fork (non-main branch pushes)
-        if: github.event_name == 'push' && github.ref != 'refs/heads/main' && !startsWith(github.ref, 'refs/tags/')
+      - name: Changelog gate — image changes must carry a change notice
+        if: github.event_name == 'push' && github.event.before != '0000000000000000000000000000000000000000'
+        run: |
+          BEFORE="${{ github.event.before }}"
+          if ! git cat-file -e "$BEFORE" 2>/dev/null; then
+            echo "Base commit $BEFORE unavailable (force push?) — skipping changelog gate."
+            exit 0
+          fi
+          CHANGED=$(git diff --name-only "$BEFORE" "${{ github.sha }}")
+          printf 'Changed files in push:\n%s\n' "$CHANGED"
+          if printf '%s\n' "$CHANGED" | grep -qE '^(Dockerfile\.(controller|host)|scripts/|docker-compose[^/]*\.ya?ml$|\.github/workflows/)'; then
+            if ! printf '%s\n' "$CHANGED" | grep -qx 'CHANGELOG.md'; then
+              echo "::error file=CHANGELOG.md::This push changes image-affecting files but adds no change notice. Add an entry to CHANGELOG.md (format in its header) and push again."
+              exit 1
+            fi
+          fi
+          echo "Changelog gate OK."
+
+      # The active line is `main`, built from the RELEASE (npm) target. The custom/fork
+      # path below is DORMANT — kept for a future Factorio line that npm may lag: a
+      # factorio-* branch carries Factorio-version fixes that exist in the fork but not
+      # yet in the npm release (as factorio-2.1.8 did before Clusterio alpha.27 added
+      # 2.1 — npm alpha.26 rejected 2.1-format mod info.json and lacked recycler). PRs
+      # into those branches build the SAME custom target the merge will publish, cloning
+      # the fork branch matching the PR's BASE.
+      - name: Clone Clusterio fork (non-main branch pushes + factorio-* PRs)
+        if: >-
+          (github.event_name == 'push' && github.ref != 'refs/heads/main' && !startsWith(github.ref, 'refs/tags/')) ||
+          (github.event_name == 'pull_request' && startsWith(github.base_ref, 'factorio-'))
         env:
-          REF_NAME: ${{ github.ref_name }}
+          REF_NAME: ${{ github.event_name == 'pull_request' && github.base_ref || github.ref_name }}
         run: |
           echo "Cloning Clusterio fork branch: $REF_NAME"
           git clone --depth 1 -b "$REF_NAME" \
@@ -38,8 +72,10 @@ jobs:
           }
           echo "CLUSTERIO_TARGET=custom" >> "$GITHUB_ENV"
 
-      - name: Set Clusterio target (release — PRs, main, and tags)
-        if: github.event_name == 'pull_request' || github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/')
+      - name: Set Clusterio target (release — main-targeted PRs, main, and tags)
+        if: >-
+          (github.event_name == 'pull_request' && !startsWith(github.base_ref, 'factorio-')) ||
+          github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/')
         run: echo "CLUSTERIO_TARGET=release" >> "$GITHUB_ENV"
 
       - name: Set up Docker Buildx
@@ -57,37 +93,65 @@ jobs:
         id: clusterio_version
         run: echo "version=$(sed -nE 's/^ARG CLUSTERIO_VERSION=([^[:space:]]+).*/\1/p' Dockerfile.host | head -1)" >> "$GITHUB_OUTPUT"
 
+      - name: Assert README version references match Dockerfile
+        run: |
+          V="${{ steps.clusterio_version.outputs.version }}"
+          grep -q "$V" README.md \
+            || { echo "README is out of date: no reference to Clusterio $V (badge/tag examples). Update README.md alongside the CLUSTERIO_VERSION bump."; exit 1; }
+
+      # A revision pin tag (e.g. 2.0.0-alpha.27-r1) must match the CLUSTERIO_VERSION
+      # baked into the image — otherwise the immutable pin would lie about its contents.
+      - name: Assert revision-pin tag matches CLUSTERIO_VERSION
+        if: github.ref_type == 'tag'
+        run: |
+          V="${{ steps.clusterio_version.outputs.version }}"
+          T="${{ github.ref_name }}"
+          case "$T" in
+            "$V"-r[0-9]*) echo "OK: tag '$T' pins CLUSTERIO_VERSION '$V'";;
+            *) echo "::error::Git tag '$T' must be '<CLUSTERIO_VERSION>-r<N>' with CLUSTERIO_VERSION=$V (from Dockerfile.host). Bump the Dockerfiles or fix the tag."; exit 1;;
+          esac
+
       - name: Extract metadata for Controller
         id: meta-controller
         uses: docker/metadata-action@v6
         with:
           images: ${{ env.REGISTRY }}/${{ env.CONTROLLER_IMAGE }}
+          # latest=false: :latest is controlled solely by the is_default_branch raw tag
+          # below. Without this, a git-tag (-rN pin) push would auto-move :latest onto the
+          # pinned build.
+          flavor: latest=false
           tags: |
             type=ref,event=branch
             type=ref,event=pr
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
+            type=ref,event=tag
             type=raw,value=latest,enable={{is_default_branch}}
             type=raw,value=${{ steps.clusterio_version.outputs.version }},enable={{is_default_branch}}
+            type=raw,value=${{ github.ref_name }}-clusterio-${{ steps.clusterio_version.outputs.version }},enable=${{ github.event_name != 'pull_request' && github.ref_type == 'branch' }}
           labels: |
             org.opencontainers.image.title=Clusterio Controller
             org.opencontainers.image.description=Clusterio cluster controller with web UI and API
+            io.clusterio.version=${{ steps.clusterio_version.outputs.version }}
 
       - name: Extract metadata for Host
         id: meta-host
         uses: docker/metadata-action@v6
         with:
           images: ${{ env.REGISTRY }}/${{ env.HOST_IMAGE }}
+          # latest=false: :latest is controlled solely by the is_default_branch raw tag
+          # below. Without this, a git-tag (-rN pin) push would auto-move :latest onto the
+          # pinned build.
+          flavor: latest=false
           tags: |
             type=ref,event=branch
             type=ref,event=pr
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
+            type=ref,event=tag
             type=raw,value=latest,enable={{is_default_branch}}
             type=raw,value=${{ steps.clusterio_version.outputs.version }},enable={{is_default_branch}}
+            type=raw,value=${{ github.ref_name }}-clusterio-${{ steps.clusterio_version.outputs.version }},enable=${{ github.event_name != 'pull_request' && github.ref_type == 'branch' }}
           labels: |
             org.opencontainers.image.title=Clusterio Host
             org.opencontainers.image.description=Clusterio host with Factorio headless server
+            io.clusterio.version=${{ steps.clusterio_version.outputs.version }}
 
       - name: Build and push Controller image
         uses: docker/build-push-action@v7
@@ -97,9 +161,13 @@ jobs:
           push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ steps.meta-controller.outputs.tags }}
           labels: ${{ steps.meta-controller.outputs.labels }}
-          build-args: CLUSTERIO_TARGET=${{ env.CLUSTERIO_TARGET }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          build-args: |
+            CLUSTERIO_TARGET=${{ env.CLUSTERIO_TARGET }}
+            BUILD_REVISION=${{ github.sha }}
+          # Distinct scopes: without them both images write the same cache
+          # index and evict each other's layers on every run.
+          cache-from: type=gha,scope=controller
+          cache-to: type=gha,mode=max,scope=controller
 
       - name: Build and push Host image
         uses: docker/build-push-action@v7
@@ -109,9 +177,20 @@ jobs:
           push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ steps.meta-host.outputs.tags }}
           labels: ${{ steps.meta-host.outputs.labels }}
-          build-args: CLUSTERIO_TARGET=${{ env.CLUSTERIO_TARGET }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          build-args: |
+            CLUSTERIO_TARGET=${{ env.CLUSTERIO_TARGET }}
+            BUILD_REVISION=${{ github.sha }}
+          cache-from: type=gha,scope=host
+          cache-to: type=gha,mode=max,scope=host
+
+      - name: Publish change notice to run summary
+        if: github.event_name == 'push'
+        run: |
+          {
+            echo "## Change notice (CHANGELOG.md, top entry)"
+            echo
+            awk '/^## /{n++} n==1' CHANGELOG.md
+          } >> "$GITHUB_STEP_SUMMARY"
 
   # Test the built images
   test:
@@ -146,19 +225,32 @@ jobs:
 
           # Test fixtures are committed to the repo:
           #   seed-data/hosts/clusterio-host-1/TestInstance/dummy.zip  (test save)
-          #   seed-data/mods/squeak-through-2_0.1.3.zip               (test mod)
+          #   seed-data/mods/squeak-through-2_0.2.0.zip               (test mod)
 
           # Add a second instance on host-2 with auto_start disabled
           mkdir -p seed-data/hosts/clusterio-host-2/StoppedInstance
           echo '{"instance.auto_start": false}' > seed-data/hosts/clusterio-host-2/StoppedInstance/instance.json
+
+          # External-plugin CI mount: the base compose ships this mount commented
+          # out. Must be writable — install-plugins.sh npm-installs inside it.
+          cat > docker-compose.plugin-ci.yml <<'YAML'
+          services:
+            clusterio-controller:
+              volumes:
+                - ./seed-data/external_plugins:/clusterio/external_plugins
+          YAML
         env:
           FACTORIO_USERNAME: ${{ secrets.FACTORIO_USERNAME }}
           FACTORIO_TOKEN: ${{ secrets.FACTORIO_TOKEN }}
 
-      - name: Clone Clusterio fork (non-main branch pushes)
-        if: github.event_name == 'push' && github.ref != 'refs/heads/main' && !startsWith(github.ref, 'refs/tags/')
+      # Same custom-target rule as the build job (dormant path): a factorio-* PR test
+      # must run the fork core the merge will publish (used when npm lags a Factorio line).
+      - name: Clone Clusterio fork (non-main branch pushes + factorio-* PRs)
+        if: >-
+          (github.event_name == 'push' && github.ref != 'refs/heads/main' && !startsWith(github.ref, 'refs/tags/')) ||
+          (github.event_name == 'pull_request' && startsWith(github.base_ref, 'factorio-'))
         env:
-          REF_NAME: ${{ github.ref_name }}
+          REF_NAME: ${{ github.event_name == 'pull_request' && github.base_ref || github.ref_name }}
         run: |
           git clone --depth 1 -b "$REF_NAME" \
             https://github.com/solarcloud7/clusterio clusterio/ 2>/dev/null \
@@ -176,23 +268,27 @@ jobs:
           else
             echo 'CLUSTERIO_TARGET=release' >> .env
           fi
-          docker compose build
+          # The base compose is consumer-first (image: only); builds live in the dev overlay.
+          docker compose -f docker-compose.yml -f docker-compose.dev.yml build
 
       - name: Create external volumes
         run: docker volume create factorio-client
 
       - name: Start services
-        run: docker compose up -d
+        # Dev overlay included so `up` uses the locally-built images, never pulls.
+        run: docker compose -f docker-compose.yml -f docker-compose.dev.yml -f docker-compose.plugin-ci.yml up -d
 
       - name: Wait for controller health
         run: |
-          timeout 120 bash -c 'until docker inspect --format="{{.State.Health.Status}}" clusterio-controller | grep -q healthy; do sleep 5; done'
+          # Healthy now means seeding-complete too (#20) — allow the full first-run window
+          timeout 240 bash -c 'until docker inspect --format="{{.State.Health.Status}}" clusterio-controller | grep -q healthy; do sleep 5; done'
 
       - name: Wait for hosts to be running
         run: |
-          # 180s allows time for optional runtime game client download (~450 MB)
-          timeout 180 bash -c 'until docker inspect --format="{{.State.Health.Status}}" clusterio-host-1 | grep -q healthy; do sleep 5; done'
-          timeout 180 bash -c 'until docker inspect --format="{{.State.Health.Status}}" clusterio-host-2 | grep -q healthy; do sleep 5; done'
+          # Healthy now means CONNECTED to the controller (#20); window covers an
+          # optional runtime game client download (~450 MB) + the guard's connect wait
+          timeout 360 bash -c 'until docker inspect --format="{{.State.Health.Status}}" clusterio-host-1 | grep -q healthy; do sleep 5; done'
+          timeout 360 bash -c 'until docker inspect --format="{{.State.Health.Status}}" clusterio-host-2 | grep -q healthy; do sleep 5; done'
 
       - name: Wait for seed completion
         run: |
@@ -225,7 +321,7 @@ jobs:
           echo "=== Verify mod added to default mod pack ==="
           docker exec clusterio-controller npx clusterioctl \
             --config /clusterio/tokens/config-control.json \
-            mod-pack show "Space Age 2.0" 2>/dev/null | grep -q "squeak-through-2" \
+            mod-pack show "Space Age 2.1" 2>/dev/null | grep -q "squeak-through-2" \
             && echo "PASS: Mod 'squeak-through-2' in default mod pack" \
             || { echo "FAIL: Mod not found in default mod pack"; exit 1; }
 
@@ -269,7 +365,104 @@ jobs:
             && echo "PASS: export-data completed successfully" \
             || { echo "FAIL: export-data failed"; exit 1; }
 
-      - name: Verify idempotent restart
+      - name: Verify plugin logs stream to stdout
+        run: |
+          echo "=== docker logs must contain [cluster-log] lines (#19 payoff) ==="
+          for c in clusterio-controller clusterio-host-1; do
+            timeout 60 bash -c "until docker logs $c 2>&1 | grep -q '\[cluster-log\]'; do sleep 5; done" \
+              && echo "PASS: $c streams cluster logs to stdout" \
+              || { echo "FAIL: no [cluster-log] lines in $c"; docker logs "$c" 2>&1 | tail -20; exit 1; }
+          done
+
+      # ---- Silent-degradation tripwires ----
+      # Each of these protections can vanish with no error anywhere when a
+      # Clusterio version bump changes internals. The tests exist to turn
+      # "protection silently gone" into a red build.
+
+      - name: Verify static-cache patch attached (engineering notes 6)
+        run: |
+          echo "=== Patch reports it found and flipped the upstream pattern ==="
+          docker logs clusterio-controller 2>&1 | grep -qE "\[static-cache-patch\] (applied|already applied)" \
+            && echo "PASS: static-cache patch attached" \
+            || { echo "FAIL: patch did not attach — core layout changed, protection silently gone"
+                 docker logs clusterio-controller 2>&1 | grep static-cache-patch || echo "(no patch log lines at all)"
+                 exit 1; }
+
+          echo "=== /static actually serves with revalidation, not immutable ==="
+          ASSET=$(docker exec clusterio-controller sh -c "curl -fsS http://localhost:8080/" | grep -oE '/static/[^"]+\.js' | head -1)
+          [ -n "$ASSET" ] || { echo "FAIL: app shell references no /static asset"; exit 1; }
+          HEADER=$(docker exec clusterio-controller sh -c "curl -fsSI http://localhost:8080$ASSET" | tr -d '\r' | grep -i '^cache-control:')
+          echo "asset=$ASSET  $HEADER"
+          case "$HEADER" in
+            *immutable*) echo "FAIL: /static still immutable — returning browsers pin stale web UI for a year"; exit 1;;
+            *) echo "PASS: /static revalidates";;
+          esac
+
+      - name: Verify BUILD_INFO provenance
+        run: |
+          # Same condition the build step used to pick the target
+          if [ -d "clusterio" ]; then EXPECTED=custom; else EXPECTED=release; fi
+          for c in clusterio-controller clusterio-host-1; do
+            INFO=$(docker exec "$c" cat /clusterio/BUILD_INFO)
+            echo "--- $c ---"; echo "$INFO"
+            echo "$INFO" | grep -q "\"clusterioTarget\": \"$EXPECTED\"" \
+              && echo "PASS: $c built from expected target ($EXPECTED)" \
+              || { echo "FAIL: $c clusterioTarget is not $EXPECTED"; exit 1; }
+            echo "$INFO" | grep -q '"clusterioVersion":' \
+              || { echo "FAIL: $c BUILD_INFO missing clusterioVersion"; exit 1; }
+          done
+
+      - name: Verify per-host game-port ranges (pitfall 6)
+        run: |
+          for n in 1 2; do
+            RANGE="34${n}00-34${n}99"
+            docker exec "clusterio-host-$n" cat /clusterio/data/config-host.json | grep -q "$RANGE" \
+              && echo "PASS: host-$n derived port range $RANGE from HOST_ID" \
+              || { echo "FAIL: host-$n config missing derived range $RANGE"
+                   docker exec "clusterio-host-$n" cat /clusterio/data/config-host.json | grep -o 'factorio_port_range[^,}]*' || true
+                   exit 1; }
+          done
+
+      # The full external-plugin lifecycle on a FRESH cluster: npm install,
+      # the @clusterio dedup strip (pitfall 10), keyword-gated auto-discovery,
+      # and the plugin's code actually loading. Every stage can fail silently.
+      - name: Verify external plugin lifecycle (pitfall 10)
+        run: |
+          echo "=== install-plugins.sh installed the fixture ==="
+          docker logs clusterio-controller 2>&1 | grep -q "Installing plugin: ci_fixture" \
+            && echo "PASS: fixture install ran" \
+            || { echo "FAIL: install-plugins.sh never processed ci_fixture"; exit 1; }
+
+          echo "=== @clusterio dedup strip fired and no duplicates remain ==="
+          docker logs clusterio-controller 2>&1 | grep -q "Removing local @clusterio packages" \
+            && echo "PASS: strip fired (npm planted peer deps as expected)" \
+            || { echo "FAIL: strip never fired — npm peer-dep behavior changed?"; exit 1; }
+          docker exec clusterio-controller sh -c '[ ! -d /clusterio/external_plugins/ci_fixture/node_modules/@clusterio ]' \
+            && echo "PASS: no local @clusterio duplicates remain" \
+            || { echo "FAIL: local @clusterio duplicates survived the strip"; exit 1; }
+
+          echo "=== keyword-gated auto-discovery registered it ==="
+          docker exec clusterio-controller sh -c 'grep -q ci_fixture /clusterio/plugin-list.json' \
+            && echo "PASS: ci_fixture in plugin-list.json" \
+            || { echo "FAIL: not discovered — clusterio-plugin keyword contract broken?"
+                 docker exec clusterio-controller cat /clusterio/plugin-list.json || true
+                 exit 1; }
+
+          echo "=== the plugin's controller code actually loaded ==="
+          timeout 60 bash -c 'until docker logs clusterio-controller 2>&1 | grep -q "ci_fixture controller plugin loaded"; do sleep 5; done' \
+            && echo "PASS: fixture controller entrypoint ran" \
+            || { echo "FAIL: plugin registered but its code never loaded"
+                 docker logs clusterio-controller 2>&1 | grep -i "ci_fixture\|plugin" | tail -20
+                 exit 1; }
+
+          echo "=== clusterioctl unharmed (no duplicate singleton) ==="
+          timeout 30 docker exec clusterio-controller npx clusterioctl \
+            --config /clusterio/tokens/config-control.json \
+            user list >/dev/null 2>&1 \
+            && echo "PASS: clusterioctl works with the external plugin installed" \
+            || { echo "FAIL: clusterioctl broken after plugin install (duplicate @clusterio/lib?)"; exit 1; }
+
+      - name: Verify idempotent restart + boot-race guard
         run: |
           echo "=== Restart and verify no duplicate seeding ==="
           docker compose restart
@@ -281,6 +474,25 @@ jobs:
           [ "$INSTANCE_COUNT" -le 2 ] \
             && echo "PASS: No duplicate instances after restart" \
             || { echo "FAIL: Duplicate instances detected"; exit 1; }
+
+          echo "=== Boot-race guard completed on both hosts (2nd run = post-restart) ==="
+          for h in clusterio-host-1 clusterio-host-2; do
+            timeout 330 bash -c "until [ \"\$(docker logs $h 2>&1 | grep -c 'boot-race guard: complete')\" -ge 2 ]; do sleep 5; done" \
+              && echo "PASS: guard completed on $h after restart" \
+              || { echo "FAIL: guard did not complete on $h after restart"
+                   echo "--- stdout tail ---"; docker logs "$h" 2>&1 | tail -30
+                   echo "--- guard file log (discriminator: absent = never launched; present = stdout lost) ---"
+                   docker exec "$h" cat /clusterio/data/boot-race-guard.log 2>/dev/null || echo "(no guard log file)"
+                   exit 1; }
+            docker logs "$h" 2>&1 | grep "boot-race guard:" | tail -4
+          done
+
+          echo "=== TestInstance running after restart (guard bounces it if it raced) ==="
+          timeout 180 bash -c 'until docker exec clusterio-controller npx clusterioctl \
+            --config /clusterio/tokens/config-control.json \
+            instance list 2>/dev/null | grep "TestInstance" | grep -q "running"; do sleep 5; done' \
+            && echo "PASS: TestInstance running after restart" \
+            || { echo "FAIL: TestInstance not running after restart"; exit 1; }
 
       - name: Show logs on failure
         if: failure()

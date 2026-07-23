@@ -1,6 +1,14 @@
 # ============================================================================
 # Clusterio Docker Compose Configuration
 # ============================================================================
+# CONSUMES PREBUILT IMAGES from GHCR by default — `docker compose up -d` pulls,
+# it does not build. To build from source instead (development), layer the dev
+# overlay:  docker compose -f docker-compose.yml -f docker-compose.dev.yml build
+#
+# Pin a specific image build by setting CLUSTERIO_IMAGE_TAG in .env — for
+# production prefer the immutable revision pin (e.g. 2.0.0-alpha.27-r1); the
+# moving tags (:latest, :2.0.0-alpha.27) are rebuilt in place.
+#
 # To add more hosts:
 #   1. Increment HOST_COUNT in controller environment
 #   2. Copy a host service block and change:
@@ -18,15 +26,7 @@
 
 # Template anchor for host services (reduces duplication)
 x-host-base: &host-base
-  build:
-    context: .
-    dockerfile: Dockerfile.host
-    args:
-      FACTORIO_HEADLESS_TAG: stable
-      # FACTORIO_HEADLESS_SHA256:
-      # CURL_RETRIES: 8
-      # Custom Clusterio build from local source (clone fork to clusterio/):
-      CLUSTERIO_TARGET: ${CLUSTERIO_TARGET:-custom}
+  image: ghcr.io/solarcloud7/clusterio-docker-host:${CLUSTERIO_IMAGE_TAG:-latest}
   env_file:
     - .env
   networks:
@@ -40,13 +40,7 @@ x-host-base: &host-base
 
 services:
   clusterio-controller:
-    build:
-      context: .
-      dockerfile: Dockerfile.controller
-      args:
-        CONTROLLER_HTTP_PORT: ${CONTROLLER_HTTP_PORT:-8080}
-        # Custom Clusterio build from local source (clone fork to clusterio/):
-        CLUSTERIO_TARGET: ${CLUSTERIO_TARGET:-custom}
+    image: ghcr.io/solarcloud7/clusterio-docker-controller:${CLUSTERIO_IMAGE_TAG:-latest}
     env_file:
       - .env
     container_name: clusterio-controller
@@ -61,7 +55,7 @@ services:
     environment:
       - HOST_COUNT=${HOST_COUNT:-2}
       - EXPORT_HOST=${EXPORT_HOST:-1}
-      - DEFAULT_MOD_PACK=${DEFAULT_MOD_PACK:-Space Age 2.0}
+      - DEFAULT_MOD_PACK=${DEFAULT_MOD_PACK:-Space Age 2.1}
     networks:
       - clusterio-net
     restart: unless-stopped
@@ -74,32 +68,19 @@ services:
 
   # -------------------------------------------------------------------------
   # Host 1 - Port range 34100-34199 - Full game client (graphical asset export)
+  # Runtime client download: set FACTORIO_USERNAME/TOKEN env vars. Baking the
+  # client into the image is a dev-overlay concern (see docker-compose.dev.yml).
   # -------------------------------------------------------------------------
   clusterio-host-1:
     <<: *host-base
-    build:
-      context: .
-      dockerfile: Dockerfile.host
-      args:
-        FACTORIO_HEADLESS_TAG: stable
-        # Uncomment to bake the full game client into host-1's image for
-        # Clusterio export-data (graphical asset export). Alternatively, set
-        # FACTORIO_USERNAME/TOKEN as runtime env vars for on-demand download.
-        # SECURITY: build args appear in `docker history`.
-        # INSTALL_FACTORIO_CLIENT: "true"
-        # FACTORIO_CLIENT_BUILD: expansion   # "alpha" = base game, "expansion" = Space Age
-        # FACTORIO_CLIENT_TAG: stable
-        # FACTORIO_CLIENT_USERNAME: ${FACTORIO_USERNAME}
-        # FACTORIO_CLIENT_TOKEN: ${FACTORIO_TOKEN}
-        # FACTORIO_CLIENT_SHA256:
-        # Custom Clusterio build from local source (clone fork to clusterio/):
-        CLUSTERIO_TARGET: ${CLUSTERIO_TARGET:-custom}
     container_name: clusterio-host-1
     hostname: clusterio-host-1
     environment:
       - HOST_NAME=clusterio-host-1
     ports:
-      - "34100-34109:34100-34109/udp"
+      # Host-side publishing is parametrized for multi-cluster machines
+      # (docs/multi-cluster.md); the container-internal range stays fixed.
+      - "${HOST1_PORTS:-34100-34109}:34100-34109/udp"
     volumes:
       - host-1-data:/clusterio/data
       - factorio-client:/opt/factorio-client
@@ -117,7 +98,7 @@ services:
       - HOST_NAME=clusterio-host-2
       - SKIP_CLIENT=true
     ports:
-      - "34200-34209:34200-34209/udp"
+      - "${HOST2_PORTS:-34200-34209}:34200-34209/udp"
     volumes:
       - host-2-data:/clusterio/data
       - shared-tokens:/clusterio/tokens:ro
@@ -152,5 +133,8 @@ volumes:
   prometheus-data:    # Prometheus metrics storage
   shared-tokens:      # Token exchange between controller and hosts
   factorio-client:    # Factorio game client (persists across `down -v`)
+    # Parametrized: `external` volume names are GLOBAL to the Docker host — two
+    # clusters on one machine sharing the default name will clobber each other's
+    # client install (docs/multi-cluster.md). Give each cluster its own name.
+    name: ${FACTORIO_CLIENT_VOLUME:-factorio-client}
     external: true
-  

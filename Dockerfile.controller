@@ -10,7 +10,7 @@ ARG CLUSTERIO_TARGET=release
 # Clusterio version for the release target (npm registry packages).
 # Pinned for reproducible builds — bump deliberately on each Clusterio release.
 # Ignored by the custom target, which builds from the clusterio/ source instead.
-ARG CLUSTERIO_VERSION=2.0.0-alpha.25
+ARG CLUSTERIO_VERSION=2.0.0-alpha.27
 
 # Base image pinned by digest for reproducible builds. The tag is kept for
 # readability; the digest is what's actually resolved. Refresh both periodically
@@ -72,7 +72,7 @@ RUN pnpm install
 FROM base AS release
 
 # Re-declare to bring the global ARG into this stage's scope
-ARG CLUSTERIO_VERSION=2.0.0-alpha.25
+ARG CLUSTERIO_VERSION=2.0.0-alpha.27
 
 USER clusterio
 
@@ -111,12 +111,31 @@ EXPOSE ${CONTROLLER_HTTP_PORT}
 # Switch to root for entrypoint (gosu will drop to clusterio)
 USER root
 
+# Build provenance: "what am I running?" becomes a file read
+# (docker exec <c> cat /clusterio/BUILD_INFO) instead of grepping node_modules.
+# Re-declare ARGs to bring them into this stage's scope; BUILD_REVISION is
+# injected by CI (github.sha) and busts this layer's cache so builtAt is honest.
+ARG CLUSTERIO_VERSION=2.0.0-alpha.27
+ARG CLUSTERIO_TARGET=release
+ARG BUILD_REVISION=unknown
+RUN printf '{\n  "clusterioVersion": "%s",\n  "clusterioTarget": "%s",\n  "gitSha": "%s",\n  "builtAt": "%s"\n}\n' \
+      "$CLUSTERIO_VERSION" "$CLUSTERIO_TARGET" "$BUILD_REVISION" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+      > /clusterio/BUILD_INFO \
+    && chown clusterio:clusterio /clusterio/BUILD_INFO
+
+COPY --chmod=755 scripts/stream-logs.sh /scripts/stream-logs.sh
 COPY --chmod=755 scripts/install-plugins.sh /scripts/install-plugins.sh
 COPY --chmod=755 scripts/seed-mods.sh /scripts/seed-mods.sh
 COPY --chmod=755 scripts/seed-instances.sh /scripts/seed-instances.sh
+COPY --chmod=755 scripts/regenerate-export-data.sh /scripts/regenerate-export-data.sh
+COPY scripts/patches/disable-immutable-cache.js /scripts/patches/disable-immutable-cache.js
 COPY --chmod=755 scripts/controller-entrypoint.sh /controller-entrypoint.sh
 
-HEALTHCHECK --interval=10s --timeout=3s --start-period=30s --retries=6 \
-  CMD curl -sf http://localhost:${CONTROLLER_HTTP_PORT:-8080}/ || exit 1
+# Honest readiness (#20): HTTP up AND the entrypoint reached steady state
+# (seeding complete) — kills the "healthy while seeding is mid-flight" class
+# that forced consumers to run `up -d` twice. start-period covers first-run
+# seeding (mod uploads etc.).
+HEALTHCHECK --interval=10s --timeout=3s --start-period=90s --retries=6 \
+  CMD sh -c 'curl -sf http://localhost:${CONTROLLER_HTTP_PORT:-8080}/ >/dev/null && [ -f /clusterio/data/.seed-healthy ]' || exit 1
 
 ENTRYPOINT ["/controller-entrypoint.sh"]

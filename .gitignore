@@ -9,7 +9,11 @@
 !/seed-data/hosts/clusterio-host-1/TestInstance/dummy.zip
 !/seed-data/hosts/clusterio-host-1/TestInstance/instance.json
 !/seed-data/hosts/clusterio-host-2/TestInst2/instance.json
-!/seed-data/mods/squeak-through-2_0.1.3.zip
+!/seed-data/mods/squeak-through-2_0.2.0.zip
+# External-plugin lifecycle fixture (its node_modules stays ignored)
+!/seed-data/external_plugins/ci_fixture/package.json
+!/seed-data/external_plugins/ci_fixture/index.js
+!/seed-data/external_plugins/ci_fixture/controller.js
 
 # Environment file (contains secrets)
 .env

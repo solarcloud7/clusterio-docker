@@ -21,6 +21,14 @@ if compgen -G "$DATA_DIR/*.lock" > /dev/null 2>&1; then
   rm -f "$DATA_DIR"/*.lock
 fi
 
+# Honest readiness: the healthcheck requires this marker, written only when the
+# entrypoint reaches steady state (post-seeding) — clear any stale copy first.
+rm -f "$DATA_DIR/.seed-healthy"
+
+# Mirror Clusterio's on-disk cluster log to stdout (CLUSTERIO_LOG_TO_STDOUT).
+source /scripts/stream-logs.sh
+start_log_streamer /clusterio/logs/cluster cluster
+
 # Handle external plugins if mounted
 source /scripts/install-plugins.sh
 install_external_plugins "$EXTERNAL_PLUGINS_DIR"
@@ -104,6 +112,13 @@ if [ ! -f "$CONFIG_PATH" ]; then
   fi
 fi
 
+# Static-cache patch (absorbed consumer fix): the controller serves /static with
+# immutable 1y headers, pinning stale web-UI chunks on returning browsers after
+# upgrades. Flip to revalidation unless the consumer explicitly opts out.
+if [ "${CONTROLLER_STATIC_CACHE_MODE:-revalidate}" != "immutable" ]; then
+  node /scripts/patches/disable-immutable-cache.js
+fi
+
 # Start controller in background
 gosu clusterio npx clusteriocontroller run --config "$CONFIG_PATH" &
 CONTROLLER_PID=$!
@@ -124,8 +139,8 @@ SEED_MARKER="$DATA_DIR/.seed-complete"
 CONTROL_CONFIG="$TOKENS_DIR/config-control.json"
 
 # Resolve default mod pack ID (used by both first-run seeding and ongoing mod uploads)
-DEFAULT_MOD_PACK="${DEFAULT_MOD_PACK:-Base Game 2.0}"
-DEFAULT_FACTORIO_VERSION="${DEFAULT_FACTORIO_VERSION:-2.0}"
+DEFAULT_MOD_PACK="${DEFAULT_MOD_PACK:-Base Game 2.1}"
+DEFAULT_FACTORIO_VERSION="${DEFAULT_FACTORIO_VERSION:-2.1}"
 MOD_PACK_ID=$(gosu clusterio npx clusterioctl --log-level error mod-pack list \
   --config "$CONTROL_CONFIG" 2>/dev/null \
   | grep "$DEFAULT_MOD_PACK" | awk -F'|' '{print $1}' | tr -d ' ' || true)
@@ -147,12 +162,21 @@ if [ -z "$MOD_PACK_ID" ] && { [ "$FIRST_RUN" = true ] || [ ! -f "$SEED_MARKER" ]
   fi
 
   # Enable DLC mods if the pack name contains "Space Age" (Clusterio creates
-  # builtin DLC mods as disabled by default — this enables them explicitly)
+  # builtin DLC mods as disabled by default — this enables them explicitly).
+  # recycler is included because space-age + quality hard-depend on it in
+  # Factorio 2.1.x; without it the save fails to load and every consumer ends
+  # up patching this list downstream.
   if [ -n "$MOD_PACK_ID" ] && echo "$DEFAULT_MOD_PACK" | grep -qi "space.age"; then
-    echo "  Enabling DLC mods (space-age, elevated-rails, quality)..."
+    echo "  Enabling DLC mods (space-age, elevated-rails, quality, recycler)..."
+    # Non-fatal but loud: under `set -e` a failing enable (e.g. an older core
+    # without the `recycler` builtin) would otherwise crash-loop the whole
+    # controller. A pack missing a DLC mod is recoverable; a dead controller
+    # is not. (Found the hard way: an alpha.25-era custom build did exactly
+    # this and the container restart-looped until compose gave up.)
     gosu clusterio npx clusterioctl --log-level error mod-pack edit "$MOD_PACK_ID" \
-      --enable-mods space-age elevated-rails quality \
-      --config "$CONTROL_CONFIG" 2>/dev/null
+      --enable-mods space-age elevated-rails quality recycler \
+      --config "$CONTROL_CONFIG" 2>/dev/null \
+      || echo "  WARNING: enabling DLC mods failed (core too old for one of them?) — pack '$DEFAULT_MOD_PACK' may need manual mod-pack edit" >&2
   fi
 fi
 
@@ -182,6 +206,11 @@ else
   # Not first run — upload any new mods added since last run (existing mods are skipped)
   /scripts/seed-mods.sh "$CONTROL_CONFIG" "$MOD_PACK_ID"
 fi
+
+# Honest readiness: everything above (config, bootstrap, seeding) completed —
+# only now does the healthcheck's marker requirement pass.
+touch "$DATA_DIR/.seed-healthy"
+echo "Entrypoint steady state reached — controller healthcheck can now pass"
 
 # Keep controller running
 wait $CONTROLLER_PID

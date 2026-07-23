@@ -1,13 +1,17 @@
 # Clusterio Docker
 
-> [!WARNING]
-> **This branch (`main`) is parked.** Active development, the CHANGELOG, and the `:latest`
-> images all live on [`factorio-2.1.8`](https://github.com/solarcloud7/clusterio-docker/tree/factorio-2.1.8)
-> — the repository's **default branch**. `main` is the npm-release line, frozen until upstream
-> Clusterio's npm packages support the current Factorio line. See the default branch's README
-> ("Branch model") for the full picture.
+[![Docker Build](https://github.com/solarcloud7/clusterio-docker/actions/workflows/docker-build.yml/badge.svg)](https://github.com/solarcloud7/clusterio-docker/actions/workflows/docker-build.yml)
+[![Clusterio](https://img.shields.io/badge/clusterio-2.0.0--alpha.27-blue)](https://www.npmjs.com/package/@clusterio/controller)
+[![Controller image](https://img.shields.io/badge/ghcr.io-controller-24292f?logo=github)](https://github.com/solarcloud7/clusterio-docker/pkgs/container/clusterio-docker-controller)
+[![Host image](https://img.shields.io/badge/ghcr.io-host-24292f?logo=github)](https://github.com/solarcloud7/clusterio-docker/pkgs/container/clusterio-docker-host)
 
 Docker images for running [Clusterio](https://github.com/clusterio/clusterio) - a clustered Factorio server manager.
+
+> **Consume, don't build.** `docker compose up -d` **pulls the prebuilt GHCR images** — you do
+> not need to build anything to run a cluster. Building from source is a development activity
+> (see [Building Locally](#building-locally)). **Agents/automation**: use the prebuilt images;
+> do not build from source unless you are developing this repository itself.
+> *(The Clusterio version badge above is CI-verified against the Dockerfiles on every build.)*
 
 ## Table of Contents
 
@@ -22,6 +26,10 @@ Docker images for running [Clusterio](https://github.com/clusterio/clusterio) - 
 - [Prometheus Metrics](#prometheus-metrics)
 - [Included Plugins](#included-plugins)
 - [External Plugins](#external-plugins)
+- [Asset Export — game client & export-data](docs/asset-export.md)
+- [Plugin Development guide](docs/plugin-development.md)
+- [Multi-cluster machines](docs/multi-cluster.md)
+- [Clusterio engineering notes](docs/clusterio-engineering-notes.md)
 - [Architecture](#architecture)
 - [Troubleshooting](#troubleshooting)
 - [Building Locally](#building-locally)
@@ -43,7 +51,59 @@ docker pull ghcr.io/solarcloud7/clusterio-docker-controller:latest
 docker pull ghcr.io/solarcloud7/clusterio-docker-host:latest
 ```
 
-Images are also tagged with the bundled Clusterio version (e.g. `:2.0.0-alpha.25`) so you can pin a specific release.
+### Image tags & provenance
+
+Image versions **track the Clusterio version**, with a docker-layer revision (`-rN`) for rebuilds
+or fixes that ship on the same Clusterio version. Pick a moving tag for "newest", a revision pin
+for reproducibility:
+
+| Tag | Meaning | Mutability |
+|-----|---------|------------|
+| `:2.0.0-alpha.27-r1` | Clusterio version **+** docker revision | **immutable pin — pin this** |
+| `:2.0.0-alpha.27` | bundled Clusterio version (`main` builds) | moves as the docker layer rebuilds |
+| `:latest` | newest `main` build | moves |
+| `:main` | newest `main` build (alias of `:latest`) | moves |
+
+`-rN` resets to `r1` on each Clusterio bump; you cut a `2.0.0-alpha.27-rN` git tag to mint an
+immutable pin. `main` also publishes a convenience pair tag `:main-clusterio-<version>` (moves per
+rebuild). Custom/fork lines (see Branch model) publish under their branch name instead, e.g.
+`:factorio-2.2` + `:factorio-2.2-clusterio-<version>`.
+
+> **The Clusterio version is the content-bearing half.** These images bundle **no Factorio bits**
+> (see licensing note below — the host downloads the mod-pack's target *headless* version at
+> runtime; the full client is never downloaded by Clusterio and can only be baked at build time
+> with credentials via `INSTALL_FACTORIO_CLIENT`, and such images must stay private). That is why
+> `BUILD_INFO` records `clusterioVersion` (and `clusterioTarget`) and has no `factorioVersion`
+> field — the Factorio version is a runtime property of the mod pack, not baked content. A
+> `factorio-*` **branch** tag (custom lines only) denotes a configuration/compatibility target
+> (entrypoint defaults, seeded mod pack, DLC enable list — e.g. `recycler` is a 2.1.x dependency —
+> and the Factorio version CI tests against), not baked game content.
+
+### Branch model
+
+**`main` is the active line** — the default branch, built from the **`release`** target (npm
+`@clusterio/*` packages, pinned via `CLUSTERIO_VERSION`). `:latest` and the Clusterio version tag
+publish from it.
+
+| Branch | Role | Build target |
+|--------|------|--------------|
+| `main` (**default**) | The active line: all hardening, docs, CHANGELOG, and issue templates live here; `:latest` + the Clusterio version tag publish from it | `release` (npm `@clusterio/*`) |
+| `factorio-*` | **Dormant.** A Factorio-line branch built from the matching fork branch — used **only when a new Factorio version outpaces npm support** (npm can lag; that's why `factorio-2.1.8` existed before Clusterio alpha.27 added 2.1). Reactivated by branching `factorio-<X.Y>` off `main`. | `custom` (matching `solarcloud7/clusterio` fork branch) |
+| `factorio-2.1.8` | **Archived.** The historical line that carried Factorio 2.1 before npm did; kept for reference, no longer the default. | `custom` (fork) |
+
+`BUILD_INFO`'s `clusterioTarget` field always records which target produced a running image
+(`release` for `main`, `custom` for a `factorio-*` line). The `custom`/fork machinery is retained
+but dormant: if npm ever lags a future Factorio line again, branch `factorio-<X.Y>` off `main` and
+CI builds it from the fork automatically.
+
+Every image also carries the label `io.clusterio.version` (readable via
+`docker inspect -f '{{index .Config.Labels "io.clusterio.version"}}' <image>`) and a
+**`/clusterio/BUILD_INFO`** file (`clusterioVersion`, `clusterioTarget`, `gitSha`, `builtAt`) so
+a running container can answer "what am I?" with a file read:
+
+```bash
+docker exec clusterio-controller cat /clusterio/BUILD_INFO
+```
 
 > **Note**: Image names include `-docker-` because CI derives them from the repository name (`clusterio-docker`).
 
@@ -174,10 +234,13 @@ docker run -d -p 34100-34199:34100-34199/udp \
 | `CONTROLLER_HTTP_PORT` | `8080` | Web UI / API port |
 | `CONTROLLER_PUBLIC_ADDRESS` | *(unset)* | Public URL for external access (standalone usage) |
 | `HOST_COUNT` | `0` (standalone) / `2` (compose) | Number of host tokens to generate |
-| `DEFAULT_MOD_PACK` | `Base Game 2.0` (standalone) / `Space Age 2.0` (compose) | Default mod pack for new instances (first run only). Created automatically if not found. |
-| `DEFAULT_FACTORIO_VERSION` | `2.0` | Factorio version used when creating a new mod pack (only applies when `DEFAULT_MOD_PACK` doesn't match an existing pack) |
+| `DEFAULT_MOD_PACK` | `Base Game 2.1` (standalone) / `Space Age 2.1` (compose) | Default mod pack for new instances (first run only). Created automatically if not found. |
+| `DEFAULT_FACTORIO_VERSION` | `2.1` | Factorio version used when creating a new mod pack (only applies when `DEFAULT_MOD_PACK` doesn't match an existing pack) |
 | `FACTORIO_USERNAME` | *(unset)* | Factorio account username (for mod portal & multiplayer) |
 | `FACTORIO_TOKEN` | *(unset)* | Factorio account token from [factorio.com/profile](https://factorio.com/profile) |
+| `EXPORT_HOST` | `1` (compose) / `0` (skip) | Host ID whose instance runs `export-data` (web-UI icons/prototypes) during first-run seeding — that host needs the game client. See [Asset Export](docs/asset-export.md). |
+| `CONTROLLER_STATIC_CACHE_MODE` | `revalidate` | `/static` cache headers: `revalidate` (default — non-hashed web-UI assets stay fresh across upgrades) or `immutable` (stock Clusterio behavior) |
+| `CLUSTERIO_LOG_TO_STDOUT` | `true` | Mirror the on-disk cluster/host logs (plugin logger output) to container stdout with a `[cluster-log]` prefix |
 
 ### Host
 
@@ -200,7 +263,7 @@ These are set at build time via `docker compose build` or `--build-arg`. In dock
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `CLUSTERIO_TARGET` | `release` | `release` (npm packages) or `custom` (build from the bundled `clusterio/` source) |
-| `CLUSTERIO_VERSION` | `2.0.0-alpha.25` | Pinned Clusterio version for the `release` target — all `@clusterio/*` packages install at this version. Ignored by `custom`. |
+| `CLUSTERIO_VERSION` | `2.0.0-alpha.27` | Pinned Clusterio version for the `release` target — all `@clusterio/*` packages install at this version. Ignored by `custom`. |
 | `NODE_IMAGE` | `node:24-bookworm-slim@sha256:…` | Base Node image, pinned by digest for reproducible builds |
 | `BAKE_FACTORIO_HEADLESS` | `false` | Bake Factorio headless into the image. **Default `false`** — images ship no Factorio (Wube's EULA forbids redistributing it); Clusterio downloads it at runtime. Set `true` only for private/offline images. |
 | `FACTORIO_HEADLESS_TAG` | `stable` | Factorio headless version to bake (only used when `BAKE_FACTORIO_HEADLESS=true`) |
@@ -289,6 +352,14 @@ Hosts pre-cache mods locally from the seed-data mount on every startup for faste
 ---
 
 ## Viewing Logs
+
+> **Plugin logs stream to stdout.** Clusterio routes plugin logger output
+> (`this.logger.*`) to files on disk — historically invisible in `docker logs` and "the #1
+> gotcha that wastes hours." These images now mirror those files to container stdout, prefixed
+> `[cluster-log] `, so `docker logs clusterio-host-1 | grep '\[cluster-log\]'` shows your
+> plugin's lines. Opt out with `CLUSTERIO_LOG_TO_STDOUT=false`. The raw files remain at
+> `/clusterio/logs/cluster/` (controller) and `/clusterio/logs/host/` (hosts); engine/module
+> Lua output stays in the instance's `factorio-current.log`.
 
 ### Dozzle
 
@@ -385,6 +456,48 @@ To use external Clusterio plugins, mount a plugins directory into the containers
 
 > **Important**: The plugins mount must NOT be read-only (`:ro`). The entrypoint runs `npm install` inside each plugin directory.
 
+> **Developing a plugin?** See the [Plugin Development guide](docs/plugin-development.md) —
+> dev loop, the require-cache and boot-race traps, log locations, and a worked example.
+
+### The install contract (what the entrypoint does to your plugin)
+
+For each immediate subdirectory of the mount that contains a `package.json`, on every container
+start the entrypoint (`scripts/install-plugins.sh`):
+
+1. `chown -R clusterio:clusterio` on the plugins dir, then runs `npm install --omit=dev` inside
+   the plugin **as the clusterio user**.
+2. An install failure is **non-fatal**: a `WARNING` is written to stderr (greppable in
+   `docker logs`) and startup continues — a broken plugin won't take down the cluster, but it
+   also won't be silently absent; check the logs.
+3. **Strips `node_modules/@clusterio` from the plugin afterwards.** Clusterio fatally rejects a
+   duplicate `@clusterio/lib` import, and npm 7+ auto-installs peerDependencies — so a vendored
+   copy would crash every `clusterioctl` invocation cluster-wide. Never ship or bake `@clusterio/*`
+   inside a plugin's `node_modules`; keep those as peerDependencies and let the image's copy win.
+
+### Operational note: the instance/plugin boot race
+
+Instance plugins are only loaded if the plugin is present in the controller's WebSocket `hello`
+when the instance starts. If an instance **auto-starts before its host finishes the controller
+handshake** (e.g. right after `docker compose up -d` or a host container restart), instance
+plugins can be **silently skipped — no error, IPC just goes nowhere**.
+
+**The host entrypoint now guards this automatically**: once the controller reports the host
+connected, a background **boot-race guard** restarts any instance that started *before* the
+handshake (detected via `startedAtMs`), so its plugins register. Healthy boots are untouched.
+Look for `boot-race guard:` lines in the host's `docker logs`.
+
+The manual protocol below still applies to **standalone hosts** (no shared tokens volume — the
+guard needs `config-control.json` and skips without it), and remains sound belt-and-suspenders
+after any deploy:
+
+1. Wait for controller and host containers to be healthy.
+2. `clusterioctl instance stop <name>` then `instance start <name>`.
+3. **Verify a plugin behavior** (a plugin command or a data write), not just "the instance runs".
+
+Also note: instance restarts re-patch save-embedded **Lua** modules, but a host that has already
+loaded a plugin's **Node** code keeps serving it from the require cache — after changing plugin
+Node code, restart the **host container**, not just the instance.
+
 ---
 
 ## Architecture
@@ -445,15 +558,53 @@ docker logs clusterio-controller
 docker logs clusterio-host-1
 ```
 
+### RCON answers but plugins seem frozen
+
+A headless server with Factorio's default `auto_pause: true` **pauses at 0 connected players**
+— every `on_tick`-driven plugin pipeline silently stops while RCON keeps responding, so the
+cluster *looks* alive. Set `"factorio.settings": { "auto_pause": false }` in the instance
+config (seedable — see [docs/seed-data.md](docs/seed-data.md)); the seeder logs an INFO when an
+instance is created without an explicit setting.
+
+### Changing DEFAULT_MOD_PACK after first run
+
+`DEFAULT_MOD_PACK` is applied **on first run only** — changing the env later does nothing (and
+`down -v` to force a re-seed destroys cluster data). Instead, reassign the pack live:
+
+```bash
+docker exec clusterio-controller npx clusterioctl \
+  --config /clusterio/tokens/config-control.json \
+  instance config set <instance> factorio.mod_pack <pack-name-or-id>
+```
+
+(Repeat per instance; `mod-pack list` shows names and ids.)
+
+### Two clusters on one machine collide
+
+Ports, container names, and **external volume names** are global to the Docker host. See
+[docs/multi-cluster.md](docs/multi-cluster.md) for the four collision surfaces and the `.env`
+knobs (`HOST1_PORTS`, `HOST2_PORTS`, `FACTORIO_CLIENT_VOLUME`).
+
 ---
 
 ## Building Locally
 
-```bash
-# Build both images
-docker compose build
+The base `docker-compose.yml` is consumer-first — it **pulls** images and contains no build
+configuration. Source builds live in the `docker-compose.dev.yml` overlay:
 
-# Build individually
+```bash
+# Build both images from source (release target = @clusterio/* from npm)
+docker compose -f docker-compose.yml -f docker-compose.dev.yml build
+
+# Run what you built (local build overrides the pulled image name)
+docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d
+
+# Core development: build from a local Clusterio monorepo checkout instead of npm
+#   1. clone your clusterio fork to ./clusterio/
+#   2. set CLUSTERIO_TARGET=custom in .env
+#   3. build with the overlay as above
+
+# Build individually (without compose)
 docker build -f Dockerfile.controller -t clusterio-controller .
 docker build -f Dockerfile.host -t clusterio-host .
 ```
