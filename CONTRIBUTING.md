@@ -48,6 +48,12 @@ See [CLAUDE.md](CLAUDE.md) → “Release Process”. In short: bump `CLUSTERIO_
 in both Dockerfiles, open a PR, and merge once green — the `main` push publishes
 the images.
 
+> **Immutable pins are git-tagged `<CLUSTERIO_VERSION>-r<N>`** (e.g. `2.0.0-alpha.27-r1`),
+> **not** `v*`. Only the `<version>-rN` shape triggers a tag build — a `v1.2.0`-style tag
+> (the retired repo-SemVer scheme) matches **no** trigger and **silently does nothing** (no
+> build, no images, no error). Increment `-rN` for docker-layer changes on the same Clusterio
+> version; it resets to `r1` on each Clusterio bump.
+
 ## Pull requests
 
 - Keep changes focused and update docs (README / CLAUDE.md / `docs/`) when

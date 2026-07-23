@@ -17,6 +17,17 @@ image: ghcr.io/solarcloud7/clusterio-docker-controller:latest
 image: ghcr.io/solarcloud7/clusterio-docker-host:latest
 ```
 
+> **Production: pin `:<version>-rN`, not `:latest` or the bare version.** `:latest`,
+> `:main`, and `:<version>` are **moving** tags — a rebuild replaces them in place, so an
+> unpinned `docker compose up -d`/`pull` can change the running image (and its lineage)
+> under you. Only `:<version>-rN` is immutable. This repo's default `docker-compose.yml`
+> uses `:latest` for zero-config first runs; override `CLUSTERIO_IMAGE_TAG=<version>-rN` in
+> `.env` for anything you depend on.
+
+> **Migrating off old `:1` / `:1.x` / `:1.x.y` tags:** the independent repo-SemVer tag axis
+> is **retired** — those tags are frozen at their last build and receive **no** further
+> updates. Re-pin to `:<version>-rN` (e.g. `:2.0.0-alpha.27-r1`).
+
 > **Note:** Image names include `-docker-` (derived from the repo name `clusterio-docker`).
 
 > **Export-data:** The extended per-category export spritesheets (recipes, signals,
