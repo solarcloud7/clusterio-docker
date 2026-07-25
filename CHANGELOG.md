@@ -20,7 +20,17 @@ Factorio versions when they change.
   green — the file downstream consumers are pointed at for image tags. Now loops all three,
   reports *every* stale file rather than dying on the first, and matches with `grep -F` so the
   dots in e.g. `2.0.0-alpha.27` are literal instead of regex wildcards.
-- No image content change — CI assertion only. Clusterio stays `2.0.0-alpha.27`.
+- **Empty-version guard on the same gate.** `grep -F ""` matches every line, so if the `sed` that
+  reads `ARG CLUSTERIO_VERSION` from `Dockerfile.host` ever resolved empty (ARG line reformatted,
+  quoted, or left without a default) the gate passed green while asserting nothing — and the same
+  value feeds the published image tag. Now fails loudly on an empty resolve.
+- **Workflow inputs moved from `${{ }}` splicing into `env:`** (`docker-build.yml`,
+  `cache-cleanup.yml`). Values interpolated directly into a `run:` body are shell, not data.
+  Two are attacker-reachable: `CLUSTERIO_VERSION` is read from `Dockerfile.host` (a fork PR can
+  edit it) and `github.event.pull_request.head.ref` is a PR author's branch name (git permits `$`,
+  backticks and `(` in refs). Same for `github.sha`, `github.ref_name`, `github.repository`.
+- Cache cleanup: a failed cache delete logged nothing (`|| true`); it now emits a `WARN` line.
+- No image content change — CI/workflow only. Clusterio stays `2.0.0-alpha.27`.
 
 ## 2026-07-22
 

@@ -32,13 +32,15 @@ jobs:
 
       - name: Changelog gate — image changes must carry a change notice
         if: github.event_name == 'push' && github.event.before != '0000000000000000000000000000000000000000'
+        env:
+          BEFORE: ${{ github.event.before }}
+          SHA: ${{ github.sha }}
         run: |
-          BEFORE="${{ github.event.before }}"
           if ! git cat-file -e "$BEFORE" 2>/dev/null; then
             echo "Base commit $BEFORE unavailable (force push?) — skipping changelog gate."
             exit 0
           fi
-          CHANGED=$(git diff --name-only "$BEFORE" "${{ github.sha }}")
+          CHANGED=$(git diff --name-only "$BEFORE" "$SHA")
           printf 'Changed files in push:\n%s\n' "$CHANGED"
           if printf '%s\n' "$CHANGED" | grep -qE '^(Dockerfile\.(controller|host)|scripts/|docker-compose[^/]*\.ya?ml$|\.github/workflows/)'; then
             if ! printf '%s\n' "$CHANGED" | grep -qx 'CHANGELOG.md'; then
@@ -95,9 +97,16 @@ jobs:
 
       # CLAUDE.md's Release Process step 1 promises three files carry the version;
       # -F because the dots in e.g. 2.0.0-alpha.27 are regex wildcards otherwise.
+      # V arrives via env rather than ${{ }} spliced into the script body: it is
+      # derived from Dockerfile.host, which a fork PR can edit.
       - name: Assert version references match Dockerfile
+        env:
+          V: ${{ steps.clusterio_version.outputs.version }}
         run: |
-          V="${{ steps.clusterio_version.outputs.version }}"
+          # An empty V makes `grep -F ""` match every line, passing the gate while
+          # asserting nothing. The same value feeds the image tag, so fail loudly.
+          test -n "$V" \
+            || { echo "::error::Could not resolve CLUSTERIO_VERSION from Dockerfile.host (ARG line reformatted or renamed?)"; exit 1; }
           rc=0
           for f in README.md CLAUDE.md docs/consumer-integration.md; do
             grep -qF "$V" "$f" \
@@ -110,9 +119,10 @@ jobs:
       # baked into the image — otherwise the immutable pin would lie about its contents.
       - name: Assert revision-pin tag matches CLUSTERIO_VERSION
         if: github.ref_type == 'tag'
+        env:
+          V: ${{ steps.clusterio_version.outputs.version }}
+          T: ${{ github.ref_name }}
         run: |
-          V="${{ steps.clusterio_version.outputs.version }}"
-          T="${{ github.ref_name }}"
           case "$T" in
             "$V"-r[0-9]*) echo "OK: tag '$T' pins CLUSTERIO_VERSION '$V'";;
             *) echo "::error::Git tag '$T' must be '<CLUSTERIO_VERSION>-r<N>' with CLUSTERIO_VERSION=$V (from Dockerfile.host). Bump the Dockerfiles or fix the tag."; exit 1;;
