@@ -30,7 +30,24 @@ Factorio versions when they change.
   edit it) and `github.event.pull_request.head.ref` is a PR author's branch name (git permits `$`,
   backticks and `(` in refs). Same for `github.sha`, `github.ref_name`, `github.repository`.
 - Cache cleanup: a failed cache delete logged nothing (`|| true`); it now emits a `WARN` line.
-- No image content change — CI/workflow only. Clusterio stays `2.0.0-alpha.27`.
+- **BREAKING (build interface): `FACTORIO_CLIENT_USERNAME` / `FACTORIO_CLIENT_TOKEN` build args
+  removed — Factorio.com credentials are now BuildKit secrets** (pitfall #8 closed at the source
+  rather than documented around). `--build-arg` values are readable via `docker history`, and the
+  `ARG` declaration alone tripped Docker's `SecretsUsedInArgOrEnv` lint on every host build.
+  `Dockerfile.host` now mounts `factorio_username` / `factorio_token` at `/run/secrets/*` — a
+  tmpfs discarded when the `RUN` ends, so no value reaches a layer.
+  - Migration: `docker build --build-arg INSTALL_FACTORIO_CLIENT=true --secret
+    id=factorio_username,env=FACTORIO_USERNAME --secret id=factorio_token,env=FACTORIO_TOKEN .`
+    Via compose, uncomment host-1's `secrets:` block in `docker-compose.dev.yml`.
+  - Passing the old build args now has **no effect**; a client build without secrets fails with
+    the migration command in the error. Builds that do not set `INSTALL_FACTORIO_CLIENT=true`
+    are unaffected.
+  - `Dockerfile.host` line 1 is now `# syntax=docker/dockerfile:1` (required for the secret
+    mounts, and only honoured as the very first line).
+  - Verified: `docker build --check` reports no warnings; a default build succeeds; a client build
+    without secrets fails with the guidance; no credential assignment appears in `docker history`.
+- No image *content* change — the published images never took the build-time client path (CI
+  passes only `CLUSTERIO_TARGET` and `BUILD_REVISION`). Clusterio stays `2.0.0-alpha.27`.
 
 ## 2026-07-22
 

@@ -25,7 +25,12 @@ back-patched.
   in the image or git history.
 - Prefer the **runtime** game-client download (set `FACTORIO_USERNAME` /
   `FACTORIO_TOKEN` as host env vars) over the build-time `INSTALL_FACTORIO_CLIENT`
-  path, which can leak credentials into image layers (see CLAUDE.md, pitfall #8).
+  path — the runtime path keeps credentials out of the build entirely.
+- When you must bake the client, credentials go in as **BuildKit secrets**
+  (`--secret id=factorio_username,env=… --secret id=factorio_token,env=…`), never
+  build args. The `FACTORIO_CLIENT_USERNAME` / `FACTORIO_CLIENT_TOKEN` build args
+  were removed precisely because `--build-arg` values are readable via
+  `docker history` (see CLAUDE.md, pitfall #8). Such images must stay private.
 - Seeded database files (`seed-data/controller/database/users.json`,
   `roles.json`) are gitignored — only the `*.example.json` templates are tracked.
 

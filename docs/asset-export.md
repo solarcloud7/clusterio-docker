@@ -39,8 +39,11 @@ the `factorio-client` volume (one-time, ~450 MB). Details that matter:
   process list.
 - Create the volume once before first use: `docker volume create factorio-client`.
 
-The build-time alternative (`INSTALL_FACTORIO_CLIENT` build args in the dev overlay /
-`Dockerfile.host`) exists for offline/private images — prefer the runtime path.
+The build-time alternative (`INSTALL_FACTORIO_CLIENT=true` in the dev overlay / `Dockerfile.host`)
+exists for offline/private images — prefer the runtime path. If you do bake, credentials are
+**BuildKit secrets**, not build args: `--secret id=factorio_username,env=FACTORIO_USERNAME
+--secret id=factorio_token,env=FACTORIO_TOKEN` (the old `FACTORIO_CLIENT_USERNAME` /
+`FACTORIO_CLIENT_TOKEN` build args were removed — see CLAUDE.md pitfall #8).
 
 ## Running the export: `EXPORT_HOST`
 

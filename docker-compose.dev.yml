@@ -35,14 +35,17 @@ services:
         # Uncomment to bake the full game client into host-1's image for
         # Clusterio export-data (graphical asset export). Alternatively, set
         # FACTORIO_USERNAME/TOKEN as runtime env vars for on-demand download.
-        # SECURITY: build args appear in `docker history` — prefer BuildKit
-        # secrets (see Dockerfile.host) and NEVER push a client-baked image.
+        # NEVER push a client-baked image — Wube's EULA forbids redistribution.
         # INSTALL_FACTORIO_CLIENT: "true"
         # FACTORIO_CLIENT_BUILD: expansion   # "alpha" = base game, "expansion" = Space Age
         # FACTORIO_CLIENT_TAG: stable
-        # FACTORIO_CLIENT_USERNAME: ${FACTORIO_USERNAME}
-        # FACTORIO_CLIENT_TOKEN: ${FACTORIO_TOKEN}
         # FACTORIO_CLIENT_SHA256:
+      # Credentials are BuildKit secrets, not build args (they would otherwise land
+      # in `docker history`). Uncomment alongside INSTALL_FACTORIO_CLIENT above;
+      # both read from FACTORIO_USERNAME / FACTORIO_TOKEN in your environment/.env.
+      # secrets:
+      #   - factorio_username
+      #   - factorio_token
 
   clusterio-host-2:
     build:
@@ -51,3 +54,16 @@ services:
       args:
         FACTORIO_HEADLESS_TAG: stable
         CLUSTERIO_TARGET: ${CLUSTERIO_TARGET:-release}
+
+# Build secrets for the optional game-client bake. Declared unconditionally (an
+# unreferenced secret is inert), but only consumed when host-1's `secrets:` block
+# above is uncommented. `environment:` resolves from your shell or .env, so the
+# values never pass through a build arg and never reach `docker history`.
+#
+# Compose requires these to exist when referenced — export them first:
+#   export FACTORIO_USERNAME=... FACTORIO_TOKEN=...
+secrets:
+  factorio_username:
+    environment: FACTORIO_USERNAME
+  factorio_token:
+    environment: FACTORIO_TOKEN

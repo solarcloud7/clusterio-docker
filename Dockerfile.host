@@ -1,3 +1,8 @@
+# syntax=docker/dockerfile:1
+# ^ Must stay the FIRST line. Parser directives are only honoured at the very top
+#   of the file; below any comment or instruction they degrade to plain comments.
+#   Required for the `RUN --mount=type=secret` in the game-client step.
+#
 # Clusterio Host - Standalone Installation
 # This container runs Clusterio host with Factorio headless server
 # Connects to a controller and runs game instances
@@ -48,19 +53,25 @@ ARG CURL_RETRIES=8
 # enabling Clusterio's export-data flow to produce complete item spritesheets.
 # When installed, the entrypoint will use the client as the factorio_directory.
 #
-# SECURITY NOTE: Build args can appear in `docker history`. For production,
-# prefer BuildKit secrets:
-#   DOCKER_BUILDKIT=1 docker build \
+# CREDENTIALS: passed as BuildKit secrets, never build args. `--build-arg` values
+# are visible in `docker history` (and the ARG declaration alone trips Docker's
+# SecretsUsedInArgOrEnv lint), so FACTORIO_CLIENT_USERNAME / FACTORIO_CLIENT_TOKEN
+# were removed as ARGs — supplying them that way no longer has any effect.
+#
+#   docker build -f Dockerfile.host \
+#     --build-arg INSTALL_FACTORIO_CLIENT=true \
 #     --secret id=factorio_username,env=FACTORIO_USERNAME \
-#     --secret id=factorio_token,env=FACTORIO_TOKEN ...
+#     --secret id=factorio_token,env=FACTORIO_TOKEN .
+#
+# For most users the runtime download (FACTORIO_USERNAME/FACTORIO_TOKEN as host
+# env vars) is the better path — no build-time credentials at all. Baking is for
+# private/offline images that cannot reach factorio.com at container start.
 ARG INSTALL_FACTORIO_CLIENT=false
 ARG FACTORIO_CLIENT_BUILD=expansion
 # FACTORIO_CLIENT_BUILD options:
 #   "alpha"     — base game without Space Age DLC
 #   "expansion" — full game including Space Age DLC (default)
 ARG FACTORIO_CLIENT_TAG=stable
-ARG FACTORIO_CLIENT_USERNAME=""
-ARG FACTORIO_CLIENT_TOKEN=""
 ARG FACTORIO_CLIENT_SHA256=""
 
 # Environment variables (can be overridden at runtime)
@@ -118,11 +129,32 @@ RUN if [ "$BAKE_FACTORIO_HEADLESS" = "true" ] && [ "$INSTALL_FACTORIO_CLIENT" !=
 # The client is a superset of the headless server — it includes the same server
 # binary plus icon/graphics data needed for Clusterio's export-data flow.
 # When installed, the headless download above is skipped to save ~100 MB.
-RUN if [ "$INSTALL_FACTORIO_CLIENT" = "true" ]; then \
+#
+# Credentials arrive as BuildKit secrets mounted at /run/secrets/* — a tmpfs that
+# is gone once the RUN finishes, so they never reach a layer or `docker history`.
+# The mounts stay optional (required=false, the default): this RUN executes on
+# EVERY build and only its `if` body is conditional, so required=true would fail
+# every default build. The guard below fails loudly instead, but only when the
+# client was actually requested.
+#
+# The token still travels in the download URL's query string. That is fine for the
+# image, but curl echoes the URL in some failure messages — a failed client build
+# can surface it in build logs. Keep such logs private.
+RUN --mount=type=secret,id=factorio_username \
+    --mount=type=secret,id=factorio_token \
+    if [ "$INSTALL_FACTORIO_CLIENT" = "true" ]; then \
+      { [ -s /run/secrets/factorio_username ] && [ -s /run/secrets/factorio_token ]; } || { \
+        echo "ERROR: INSTALL_FACTORIO_CLIENT=true needs both credentials as BuildKit secrets:" && \
+        echo "  --secret id=factorio_username,env=FACTORIO_USERNAME --secret id=factorio_token,env=FACTORIO_TOKEN" && \
+        echo "  (the FACTORIO_CLIENT_USERNAME / FACTORIO_CLIENT_TOKEN build args were removed)" && \
+        exit 1; \
+      } && \
       echo "Downloading Factorio game client (build=${FACTORIO_CLIENT_BUILD}, tag=${FACTORIO_CLIENT_TAG})..." && \
       archive="/tmp/factorio-client.tar.xz" && \
+      fc_user="$(cat /run/secrets/factorio_username)" && \
+      fc_token="$(cat /run/secrets/factorio_token)" && \
       curl -fL --retry "$CURL_RETRIES" \
-        "https://factorio.com/get-download/${FACTORIO_CLIENT_TAG}/${FACTORIO_CLIENT_BUILD}/linux64?username=${FACTORIO_CLIENT_USERNAME}&token=${FACTORIO_CLIENT_TOKEN}" \
+        "https://factorio.com/get-download/${FACTORIO_CLIENT_TAG}/${FACTORIO_CLIENT_BUILD}/linux64?username=${fc_user}&token=${fc_token}" \
         -o "$archive" && \
       if [ -n "$FACTORIO_CLIENT_SHA256" ]; then \
         echo "${FACTORIO_CLIENT_SHA256}  ${archive}" | sha256sum -c; \
