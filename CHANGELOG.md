@@ -11,6 +11,17 @@ change notice: container → sha → this file.
 Format: `## YYYY-MM-DD` heading + short bullets. Always state the Clusterio /
 Factorio versions when they change.
 
+## 2026-07-25
+
+- **CI version-assert gate widened to all three files the release process names.** The step
+  checked `README.md` alone, while Release Process step 1 (`CLAUDE.md`) promises `README.md`,
+  `CLAUDE.md` **and** `docs/consumer-integration.md` are gated. A `CLUSTERIO_VERSION` bump could
+  therefore leave the consumer-facing tag table in `docs/consumer-integration.md` stale with CI
+  green — the file downstream consumers are pointed at for image tags. Now loops all three,
+  reports *every* stale file rather than dying on the first, and matches with `grep -F` so the
+  dots in e.g. `2.0.0-alpha.27` are literal instead of regex wildcards.
+- No image content change — CI assertion only. Clusterio stays `2.0.0-alpha.27`.
+
 ## 2026-07-22
 
 - **Clusterio `2.0.0-alpha.26` → `2.0.0-alpha.27`** (`CLUSTERIO_VERSION`, both Dockerfiles).

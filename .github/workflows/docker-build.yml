@@ -93,11 +93,18 @@ jobs:
         id: clusterio_version
         run: echo "version=$(sed -nE 's/^ARG CLUSTERIO_VERSION=([^[:space:]]+).*/\1/p' Dockerfile.host | head -1)" >> "$GITHUB_OUTPUT"
 
-      - name: Assert README version references match Dockerfile
+      # CLAUDE.md's Release Process step 1 promises three files carry the version;
+      # -F because the dots in e.g. 2.0.0-alpha.27 are regex wildcards otherwise.
+      - name: Assert version references match Dockerfile
         run: |
           V="${{ steps.clusterio_version.outputs.version }}"
-          grep -q "$V" README.md \
-            || { echo "README is out of date: no reference to Clusterio $V (badge/tag examples). Update README.md alongside the CLUSTERIO_VERSION bump."; exit 1; }
+          rc=0
+          for f in README.md CLAUDE.md docs/consumer-integration.md; do
+            grep -qF "$V" "$f" \
+              || { echo "STALE $f: no reference to Clusterio $V"; rc=1; }
+          done
+          [ "$rc" -eq 0 ] \
+            || { echo "Update the stale file(s) alongside the CLUSTERIO_VERSION bump (see CLAUDE.md Release Process step 1)."; exit 1; }
 
       # A revision pin tag (e.g. 2.0.0-alpha.27-r1) must match the CLUSTERIO_VERSION
       # baked into the image — otherwise the immutable pin would lie about its contents.
