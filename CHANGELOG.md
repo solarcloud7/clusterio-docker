@@ -11,6 +11,27 @@ change notice: container → sha → this file.
 Format: `## YYYY-MM-DD` heading + short bullets. Always state the Clusterio /
 Factorio versions when they change.
 
+## 2026-07-25
+
+- **CI version-assert gate widened to all three files the release process names.** The step
+  checked `README.md` alone, while Release Process step 1 (`CLAUDE.md`) promises `README.md`,
+  `CLAUDE.md` **and** `docs/consumer-integration.md` are gated. A `CLUSTERIO_VERSION` bump could
+  therefore leave the consumer-facing tag table in `docs/consumer-integration.md` stale with CI
+  green — the file downstream consumers are pointed at for image tags. Now loops all three,
+  reports *every* stale file rather than dying on the first, and matches with `grep -F` so the
+  dots in e.g. `2.0.0-alpha.27` are literal instead of regex wildcards.
+- **Empty-version guard on the same gate.** `grep -F ""` matches every line, so if the `sed` that
+  reads `ARG CLUSTERIO_VERSION` from `Dockerfile.host` ever resolved empty (ARG line reformatted,
+  quoted, or left without a default) the gate passed green while asserting nothing — and the same
+  value feeds the published image tag. Now fails loudly on an empty resolve.
+- **Workflow inputs moved from `${{ }}` splicing into `env:`** (`docker-build.yml`,
+  `cache-cleanup.yml`). Values interpolated directly into a `run:` body are shell, not data.
+  Two are attacker-reachable: `CLUSTERIO_VERSION` is read from `Dockerfile.host` (a fork PR can
+  edit it) and `github.event.pull_request.head.ref` is a PR author's branch name (git permits `$`,
+  backticks and `(` in refs). Same for `github.sha`, `github.ref_name`, `github.repository`.
+- Cache cleanup: a failed cache delete logged nothing (`|| true`); it now emits a `WARN` line.
+- No image content change — CI/workflow only. Clusterio stays `2.0.0-alpha.27`.
+
 ## 2026-07-22
 
 - **Clusterio `2.0.0-alpha.26` → `2.0.0-alpha.27`** (`CLUSTERIO_VERSION`, both Dockerfiles).
