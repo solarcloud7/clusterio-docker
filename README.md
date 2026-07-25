@@ -271,10 +271,20 @@ These are set at build time via `docker compose build` or `--build-arg`. In dock
 | `INSTALL_FACTORIO_CLIENT` | `false` | Install full game client for graphical asset export (host only) |
 | `FACTORIO_CLIENT_BUILD` | `expansion` | Client variant: `alpha` (base game) or `expansion` (Space Age) |
 | `FACTORIO_CLIENT_TAG` | `stable` | Factorio client version tag |
-| `FACTORIO_CLIENT_USERNAME` | *(unset)* | Factorio.com username (required when `INSTALL_FACTORIO_CLIENT=true`) |
-| `FACTORIO_CLIENT_TOKEN` | *(unset)* | Factorio.com token (required when `INSTALL_FACTORIO_CLIENT=true`) |
 | `FACTORIO_CLIENT_SHA256` | *(unset)* | SHA256 checksum for game client archive (skips verification if empty) |
 | `CURL_RETRIES` | `8` | Number of curl retry attempts for Factorio downloads |
+
+> **Factorio.com credentials are BuildKit secrets, not build args.** `--build-arg` values are
+> visible in `docker history`, so `FACTORIO_CLIENT_USERNAME` / `FACTORIO_CLIENT_TOKEN` were removed
+> as build args — passing them has no effect. When `INSTALL_FACTORIO_CLIENT=true`, supply them as
+> secrets instead (the build fails with instructions if they are missing):
+>
+> ```bash
+> docker build -f Dockerfile.host --build-arg INSTALL_FACTORIO_CLIENT=true --secret id=factorio_username,env=FACTORIO_USERNAME --secret id=factorio_token,env=FACTORIO_TOKEN .
+> ```
+>
+> Most users want the **runtime** download instead — set `FACTORIO_USERNAME` / `FACTORIO_TOKEN` as
+> host env vars and no credential touches the build at all.
 
 > **Note**: The build-time client path is only needed for private images. For most users, the **runtime download** (set `FACTORIO_USERNAME` + `FACTORIO_TOKEN` as host env vars) is simpler and more secure — credentials never appear in image layers.
 

@@ -91,7 +91,7 @@ volumes:
 Export-data generates item icons, recipe data, and spritesheets for the web UI.
 
 **Requirements:**
-1. One host must have the full Factorio game client — set `FACTORIO_USERNAME` + `FACTORIO_TOKEN` on the host for runtime download, or bake it in with `INSTALL_FACTORIO_CLIENT=true` at build time
+1. One host must have the full Factorio game client — set `FACTORIO_USERNAME` + `FACTORIO_TOKEN` on the host for runtime download (recommended), or bake it in with `INSTALL_FACTORIO_CLIENT=true` at build time. Baking requires credentials as **BuildKit secrets** (`--secret id=factorio_username,env=… --secret id=factorio_token,env=…`), not build args, and such images must stay private
 2. Set `EXPORT_HOST=N` on the **controller** (N = host ID with game client)
 3. At least one instance must be seeded on that host via `seed-data/hosts/clusterio-host-N/`
 

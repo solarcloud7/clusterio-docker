@@ -179,8 +179,7 @@ When the controller volume is wiped but host volumes persist, the controller gen
 | `INSTALL_FACTORIO_CLIENT` | `false` | Install full game client alongside headless for graphical asset export |
 | `FACTORIO_CLIENT_BUILD` | `expansion` | Client variant: `alpha` (base game) or `expansion` (Space Age) |
 | `FACTORIO_CLIENT_TAG` | `stable` | Factorio client version tag (same format as headless) |
-| `FACTORIO_CLIENT_USERNAME` | — | Factorio.com username (required when `INSTALL_FACTORIO_CLIENT=true`) |
-| `FACTORIO_CLIENT_TOKEN` | — | Factorio.com token (required when `INSTALL_FACTORIO_CLIENT=true`) |
+| *(credentials)* | — | **Not build args.** `INSTALL_FACTORIO_CLIENT=true` requires BuildKit secrets `factorio_username` / `factorio_token` — see Pitfall #8 |
 | `FACTORIO_CLIENT_SHA256` | — | SHA256 checksum for game client archive (skips verification if empty) |
 | `CURL_RETRIES` | `8` | Number of curl retry attempts for Factorio downloads |
 
@@ -406,10 +405,18 @@ Set `"instance.auto_start": false` to prevent auto-starting after seeding.
 **Cause**: `DEFAULT_MOD_PACK` was set to `"Base Game 2.1"` (no DLC)
 **Fix**: Set `DEFAULT_MOD_PACK=Space Age 2.1` in controller env. If the name contains "Space Age", the entrypoint automatically enables the `space-age`, `elevated-rails`, `quality`, and `recycler` builtin mods when creating the pack (recycler is a hard dependency of space-age + quality in 2.1.x). If the name doesn't match an existing pack, it's created automatically using `DEFAULT_FACTORIO_VERSION`. Requires volume wipe + redeploy (mod pack is set on first run only).
 
-### 8. INSTALL_FACTORIO_CLIENT Credentials Exposed in Image History
-**Symptom**: `docker history` reveals Factorio account credentials
-**Cause**: Build args (`FACTORIO_CLIENT_USERNAME`, `FACTORIO_CLIENT_TOKEN`) are passed via `--build-arg` which can appear in image layer metadata
-**Fix**: Use the **runtime download** instead (set `FACTORIO_USERNAME` + `FACTORIO_TOKEN` as env vars). Credentials are only runtime env vars — they never appear in image layers. The build-time path (`INSTALL_FACTORIO_CLIENT=true`) is only needed for private images; use BuildKit secrets if you must bake the client in.
+### 8. Factorio Client Credentials Must Be BuildKit Secrets, Not Build Args
+**Symptom**: `docker build --build-arg FACTORIO_CLIENT_TOKEN=… ` no longer installs the client; the build fails asking for secrets
+**Cause**: `--build-arg` values are visible via `docker history`, and the `ARG` declaration alone trips Docker's `SecretsUsedInArgOrEnv` lint. The `FACTORIO_CLIENT_USERNAME` / `FACTORIO_CLIENT_TOKEN` **build args were removed** — passing them has no effect.
+**Fix**: Supply credentials as BuildKit secrets. `Dockerfile.host` mounts them at `/run/secrets/*` on a tmpfs that is discarded when the `RUN` ends, so no value reaches a layer:
+```bash
+docker build -f Dockerfile.host --build-arg INSTALL_FACTORIO_CLIENT=true --secret id=factorio_username,env=FACTORIO_USERNAME --secret id=factorio_token,env=FACTORIO_TOKEN .
+```
+Via compose, `docker-compose.dev.yml` declares the two secrets (`environment:` sourced from `FACTORIO_USERNAME`/`FACTORIO_TOKEN`); uncomment host-1's `secrets:` block alongside `INSTALL_FACTORIO_CLIENT`.
+
+Notes: `Dockerfile.host` line 1 **must** stay `# syntax=docker/dockerfile:1` — parser directives are only honoured at the very top, and the secret mounts need it. The mounts are deliberately optional (`required=false`) because that `RUN` executes on every build and only its `if` body is conditional; a guard inside the branch fails loudly instead. Residual: the token still travels in the download URL's query string, and curl echoes URLs in some failure messages, so keep failed client-build logs private.
+
+**Most users should skip all of this** and use the **runtime download** — set `FACTORIO_USERNAME` + `FACTORIO_TOKEN` as host env vars and no credential touches the build. Baking is only for private/offline images that cannot reach factorio.com at container start. Published images never take this path: CI passes only `CLUSTERIO_TARGET` and `BUILD_REVISION`.
 
 ### 9. Game Client Image Is Much Larger Than Headless
 **Symptom**: Host image is ~300-500 MB larger than expected
