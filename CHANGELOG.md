@@ -27,6 +27,10 @@ Factorio versions when they change.
     now `gates` → `test` → `build`, adding only the ~20s gates job.
   - Tag (`-rN` pin) builds are now gated on the suite too, which they previously were not.
 - No image content change — CI ordering only. Clusterio stays `2.0.0-alpha.27`.
+- **Client-secret reads strip CR.** `$(cat)` already drops trailing newlines, so the LF case was
+  never broken — but on the Linux builder a `--secret id=…,src=<file>` secret authored on Windows
+  is CRLF, and the surviving carriage return would ride into the download URL's query string as `%0D`. Found
+  reviewing #42 post-merge.
 - **Instance seeding no longer discards its own error messages.** `instance create`, `instance
   assign` and `save upload` each ran as `… 2>/dev/null || true`, throwing away both the exit
   status and the diagnostic. A failed create then let assign, upload and start run against an

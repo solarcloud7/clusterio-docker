@@ -151,8 +151,11 @@ RUN --mount=type=secret,id=factorio_username \
       } && \
       echo "Downloading Factorio game client (build=${FACTORIO_CLIENT_BUILD}, tag=${FACTORIO_CLIENT_TAG})..." && \
       archive="/tmp/factorio-client.tar.xz" && \
-      fc_user="$(cat /run/secrets/factorio_username)" && \
-      fc_token="$(cat /run/secrets/factorio_token)" && \
+      # tr strips CR, not LF: $(...) already drops trailing newlines, but a
+      # secret supplied as --secret src=<file> from a Windows-authored file is
+      # CRLF, and the surviving \r would ride into the URL query string as %0D.
+      fc_user="$(tr -d '\r\n' < /run/secrets/factorio_username)" && \
+      fc_token="$(tr -d '\r\n' < /run/secrets/factorio_token)" && \
       curl -fL --retry "$CURL_RETRIES" \
         "https://factorio.com/get-download/${FACTORIO_CLIENT_TAG}/${FACTORIO_CLIENT_BUILD}/linux64?username=${fc_user}&token=${fc_token}" \
         -o "$archive" && \
