@@ -11,6 +11,23 @@ change notice: container → sha → this file.
 Format: `## YYYY-MM-DD` heading + short bullets. Always state the Clusterio /
 Factorio versions when they change.
 
+## 2026-07-26
+
+- **Publishing is now gated on the integration suite.** `build` pushed to GHCR while `test` ran
+  after it, so a red integration run did not stop `:latest` and the version tag from moving — on
+  2026-07-23 exactly that happened (`build` green and published, `test` failed on the restart
+  check, `main` left red with the images already out).
+  - `test` never consumed `build`'s output — it builds its own images from the same source — so
+    the dependency was pure sequencing. It now depends on the gates instead, and `build`
+    (the publisher) depends on `[gates, test]`.
+  - The cheap assertions moved into a new **`gates`** job: changelog gate, version-reference
+    assert, revision-pin assert. Without this they would have run *after* the 3-minute suite,
+    turning a 20-second "stale CHANGELOG" answer into a slow one.
+  - Wall clock is roughly unchanged — the pipeline was already serial (`build` → `test`); it is
+    now `gates` → `test` → `build`, adding only the ~20s gates job.
+  - Tag (`-rN` pin) builds are now gated on the suite too, which they previously were not.
+- No image content change — CI ordering only. Clusterio stays `2.0.0-alpha.27`.
+
 ## 2026-07-25
 
 - **CI version-assert gate widened to all three files the release process names.** The step
