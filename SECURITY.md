@@ -54,11 +54,29 @@ a low-privilege sandbox:
   at `/clusterio/data/.guard-control.json`. That copy is `0600` and **removed on
   every guard exit path** — it must not outlive the boot.
 
-**Practical consequence:** external Clusterio plugins run as Node inside the host
-process with full filesystem access, so an untrusted plugin on any host is one
-file read away from cluster admin. Treat third-party plugins as trusted code, or
-run them on a cluster you are willing to lose. (Factorio's own Lua is sandboxed
-and is *not* a path to these files.)
+**This is deliberate: a cluster is ONE trust domain, and host containers are not
+a security boundary.** Scoping the guard to a least-privilege role was considered
+and rejected. `shared-tokens` is a Docker *named volume*, which cannot span
+machines — so the only containers that can read the admin credential are ones
+already running on the same host, under the same operator, who has root on that
+machine and can `docker exec` the controller regardless. A **remote** host never
+mounts this volume at all; it authenticates via the `CLUSTERIO_HOST_TOKEN`
+environment variable and never sees `config-control.json`. Splitting the
+credential would have broken either every consumer's compose file or 17
+documented admin paths, to defend a boundary that does not exist.
+
+**What this does mean:** external Clusterio plugins run as Node inside the host
+process with full filesystem access. Treat third-party plugins as trusted code —
+they are already inside the trust domain, and no file permission changes that.
+(Factorio's own Lua is sandboxed and is *not* a path to these files.)
+
+**Why the file modes still matter:** host data volumes get backed up, copied and
+bind-mounted. `0600` and the guard-copy cleanup keep an admin credential out of a
+backup tarball or an exported volume — a genuinely different trust domain from
+"another container on the same machine".
+
+**Revisit if** hosts ever share a machine across operators, or a host container
+is ever handed to someone who should not have controller admin.
 
 There is currently **no token rotation path** — generation happens only in the
 controller's first-run block, so rotating means wiping the controller volume.
