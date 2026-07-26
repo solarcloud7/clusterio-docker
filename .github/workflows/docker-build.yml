@@ -18,11 +18,14 @@ env:
   HOST_IMAGE: ${{ github.repository }}-host
 
 jobs:
-  build:
+  # Cheap, fast-failing gates, split out of `build` for two reasons: they report a
+  # stale CHANGELOG or version reference in ~20s instead of behind the 3-minute
+  # integration suite, and splitting them lets `build` depend on `test` without
+  # pushing that feedback to the end of the run.
+  gates:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      packages: write
 
     steps:
       - name: Checkout repository
@@ -49,6 +52,61 @@ jobs:
             fi
           fi
           echo "Changelog gate OK."
+
+      - name: Resolve Clusterio version for release image tag
+        id: clusterio_version
+        run: echo "version=$(sed -nE 's/^ARG CLUSTERIO_VERSION=([^[:space:]]+).*/\1/p' Dockerfile.host | head -1)" >> "$GITHUB_OUTPUT"
+
+      # CLAUDE.md's Release Process step 1 promises three files carry the version;
+      # -F because the dots in e.g. 2.0.0-alpha.27 are regex wildcards otherwise.
+      # V arrives via env rather than ${{ }} spliced into the script body: it is
+      # derived from Dockerfile.host, which a fork PR can edit.
+      - name: Assert version references match Dockerfile
+        env:
+          V: ${{ steps.clusterio_version.outputs.version }}
+        run: |
+          # An empty V makes `grep -F ""` match every line, passing the gate while
+          # asserting nothing. The same value feeds the image tag, so fail loudly.
+          test -n "$V" \
+            || { echo "::error::Could not resolve CLUSTERIO_VERSION from Dockerfile.host (ARG line reformatted or renamed?)"; exit 1; }
+          rc=0
+          for f in README.md CLAUDE.md docs/consumer-integration.md; do
+            grep -qF "$V" "$f" \
+              || { echo "STALE $f: no reference to Clusterio $V"; rc=1; }
+          done
+          [ "$rc" -eq 0 ] \
+            || { echo "Update the stale file(s) alongside the CLUSTERIO_VERSION bump (see CLAUDE.md Release Process step 1)."; exit 1; }
+
+      # A revision pin tag (e.g. 2.0.0-alpha.27-r1) must match the CLUSTERIO_VERSION
+      # baked into the image — otherwise the immutable pin would lie about its contents.
+      - name: Assert revision-pin tag matches CLUSTERIO_VERSION
+        if: github.ref_type == 'tag'
+        env:
+          V: ${{ steps.clusterio_version.outputs.version }}
+          T: ${{ github.ref_name }}
+        run: |
+          case "$T" in
+            "$V"-r[0-9]*) echo "OK: tag '$T' pins CLUSTERIO_VERSION '$V'";;
+            *) echo "::error::Git tag '$T' must be '<CLUSTERIO_VERSION>-r<N>' with CLUSTERIO_VERSION=$V (from Dockerfile.host). Bump the Dockerfiles or fix the tag."; exit 1;;
+          esac
+
+  # Builds and PUBLISHES. `needs: test` is the point: the push used to happen in
+  # parallel with (in practice, before) the integration suite, so a red test run
+  # still moved :latest — that happened for real on 2026-07-23. `test` builds its
+  # own images from the same source, so it never consumed this job's output and
+  # nothing is serialised that previously ran concurrently except the push itself.
+  build:
+    needs: [gates, test]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      # Shallow is fine here: the changelog gate (the only consumer of full
+      # history) moved to `gates`.
+      - name: Checkout repository
+        uses: actions/checkout@v6
 
       # The active line is `main`, built from the RELEASE (npm) target. The custom/fork
       # path below is DORMANT — kept for a future Factorio line that npm may lag: a
@@ -95,38 +153,8 @@ jobs:
         id: clusterio_version
         run: echo "version=$(sed -nE 's/^ARG CLUSTERIO_VERSION=([^[:space:]]+).*/\1/p' Dockerfile.host | head -1)" >> "$GITHUB_OUTPUT"
 
-      # CLAUDE.md's Release Process step 1 promises three files carry the version;
-      # -F because the dots in e.g. 2.0.0-alpha.27 are regex wildcards otherwise.
-      # V arrives via env rather than ${{ }} spliced into the script body: it is
-      # derived from Dockerfile.host, which a fork PR can edit.
-      - name: Assert version references match Dockerfile
-        env:
-          V: ${{ steps.clusterio_version.outputs.version }}
-        run: |
-          # An empty V makes `grep -F ""` match every line, passing the gate while
-          # asserting nothing. The same value feeds the image tag, so fail loudly.
-          test -n "$V" \
-            || { echo "::error::Could not resolve CLUSTERIO_VERSION from Dockerfile.host (ARG line reformatted or renamed?)"; exit 1; }
-          rc=0
-          for f in README.md CLAUDE.md docs/consumer-integration.md; do
-            grep -qF "$V" "$f" \
-              || { echo "STALE $f: no reference to Clusterio $V"; rc=1; }
-          done
-          [ "$rc" -eq 0 ] \
-            || { echo "Update the stale file(s) alongside the CLUSTERIO_VERSION bump (see CLAUDE.md Release Process step 1)."; exit 1; }
-
-      # A revision pin tag (e.g. 2.0.0-alpha.27-r1) must match the CLUSTERIO_VERSION
-      # baked into the image — otherwise the immutable pin would lie about its contents.
-      - name: Assert revision-pin tag matches CLUSTERIO_VERSION
-        if: github.ref_type == 'tag'
-        env:
-          V: ${{ steps.clusterio_version.outputs.version }}
-          T: ${{ github.ref_name }}
-        run: |
-          case "$T" in
-            "$V"-r[0-9]*) echo "OK: tag '$T' pins CLUSTERIO_VERSION '$V'";;
-            *) echo "::error::Git tag '$T' must be '<CLUSTERIO_VERSION>-r<N>' with CLUSTERIO_VERSION=$V (from Dockerfile.host). Bump the Dockerfiles or fix the tag."; exit 1;;
-          esac
+      # The version/revision-pin assertions live in the `gates` job — this job only
+      # needs the resolved value above for the image tags.
 
       - name: Extract metadata for Controller
         id: meta-controller
@@ -209,9 +237,11 @@ jobs:
             awk '/^## /{n++} n==1' CHANGELOG.md
           } >> "$GITHUB_STEP_SUMMARY"
 
-  # Test the built images
+  # Integration suite. Builds its own images from the same source (see "Build
+  # images" below) rather than pulling the registry, so it depends only on the
+  # cheap gates — `build` now waits on THIS job before publishing.
   test:
-    needs: build
+    needs: gates
     runs-on: ubuntu-latest
     
     steps:
