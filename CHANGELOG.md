@@ -27,6 +27,26 @@ Factorio versions when they change.
     now `gates` → `test` → `build`, adding only the ~20s gates job.
   - Tag (`-rN` pin) builds are now gated on the suite too, which they previously were not.
 - No image content change — CI ordering only. Clusterio stays `2.0.0-alpha.27`.
+- **Instance seeding no longer discards its own error messages.** `instance create`, `instance
+  assign` and `save upload` each ran as `… 2>/dev/null || true`, throwing away both the exit
+  status and the diagnostic. A failed create then let assign, upload and start run against an
+  instance that did not exist — each swallowing too — so the only symptom was the 120s start-loop
+  timeout, long after the real error was gone.
+  - New `ctl_seed` helper captures stderr and prints it under an `ERROR:` line naming the
+    operation. Table output on stdout is still dropped; only the error text is kept.
+  - A failed **create** or **assign** now skips the rest of that instance instead of operating on
+    something that isn't there. Other instances still seed — one bad entry must not strand the
+    cluster.
+  - A failed **save upload** no longer auto-starts the instance. It previously started on a fresh
+    map under the intended name: a silently wrong world that looks healthy. It is now left
+    stopped with an explanation.
+  - A malformed `instance.json` no longer falls through silently to `auto_start=true`; the parse
+    error is printed and the default is stated.
+  - Seeding exits non-zero when anything failed, and the controller then **withholds
+    `.seed-complete`** so the next start retries. It deliberately stays up and healthy: aborting
+    would restart-loop the container on a permanently bad `instance.json`, and marking the
+    controller unhealthy would block hosts (they gate on controller health), turning a partial
+    seeding failure into a dead cluster.
 
 ## 2026-07-25
 
