@@ -165,6 +165,21 @@ guard_log() {
 }
 
 boot_race_guard() {
+    # Wrapper so the derived admin-token copy is removed on EVERY exit path — the
+    # impl below returns early in four places. Without this the file persisted on
+    # the host's data volume indefinitely, long outliving the boot it was minted
+    # for (found on a live host dated weeks after creation).
+    local rc=0
+    _boot_race_guard_impl || rc=$?
+    rm -f "$GUARD_CTL_CONFIG"
+    # Logged AFTER the rm so this line is a real barrier: the impl's own
+    # "complete" fires before cleanup, so anything waiting on that would race
+    # the removal. Wait on this instead.
+    guard_log "derived control config removed"
+    return "$rc"
+}
+
+_boot_race_guard_impl() {
     # Wall-clock deadline (SECONDS is bash's elapsed timer): each ctl_ro poll can
     # itself burn up to ~25s in timeout, so counting sleeps alone would stretch
     # the nominal deadline to many minutes of real time.
@@ -186,6 +201,10 @@ boot_race_guard() {
         guard_log "could not derive a host-reachable control config — skipping"
         return 0
     fi
+    # This derived copy carries the controller's ADMIN token. Own it by clusterio
+    # (ctl_ro runs gosu clusterio) and keep it 0600 for the few minutes it exists.
+    chown clusterio:clusterio "$GUARD_CTL_CONFIG" 2>/dev/null || true
+    chmod 600 "$GUARD_CTL_CONFIG" 2>/dev/null || true
     guard_log "control config present (rewritten controller_url -> $GUARD_CONTROLLER_URL) — waiting for controller to report this host connected"
     until ctl_ro host list | awk -F'|' -v n="$HOST_NAME" \
         'function t(s){gsub(/^ +| +$/,"",s);return s} NR>2 && t($2)==n && t($4)=="true"{ok=1} END{exit !ok}'; do

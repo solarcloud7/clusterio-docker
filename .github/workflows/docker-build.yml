@@ -492,6 +492,21 @@ jobs:
             && echo "PASS: No duplicate instances after restart" \
             || { echo "FAIL: Duplicate instances detected"; exit 1; }
 
+          echo "=== Token hygiene: 0600 on the shared tokens volume ==="
+          # config-control.json is a CLUSTER-ADMIN credential shared with every host.
+          # A regression to 0644 widens it to any process in any host container.
+          BAD=$(docker exec clusterio-controller sh -c \
+            'stat -c "%n %U %a" /clusterio/tokens/* 2>/dev/null' | awk '$3 != "600" || $2 != "clusterio"')
+          if [ -n "$BAD" ]; then
+            echo "FAIL: token files must be clusterio-owned mode 0600:"; echo "$BAD"; exit 1
+          fi
+          echo "PASS: all shared token files are clusterio 0600"
+          # Hosts must still be able to READ them as uid 1001 — a root-owned 0600
+          # file would pass the check above and silently lock every host out.
+          docker exec clusterio-host-1 sh -c 'gosu clusterio head -c1 /clusterio/tokens/clusterio-host-1.token >/dev/null' \
+            && echo "PASS: host-1 can still read its token as clusterio" \
+            || { echo "FAIL: 0600 locked host-1 out of its own token"; exit 1; }
+
           echo "=== Boot-race guard completed on both hosts (2nd run = post-restart) ==="
           for h in clusterio-host-1 clusterio-host-2; do
             timeout 330 bash -c "until [ \"\$(docker logs $h 2>&1 | grep -c 'boot-race guard: complete')\" -ge 2 ]; do sleep 5; done" \
@@ -502,6 +517,20 @@ jobs:
                    docker exec "$h" cat /clusterio/data/boot-race-guard.log 2>/dev/null || echo "(no guard log file)"
                    exit 1; }
             docker logs "$h" 2>&1 | grep "boot-race guard:" | tail -4
+          done
+
+          echo "=== Derived admin-token copy cleaned up after the guard ==="
+          # .guard-control.json is a rewritten copy of the cluster-admin config.
+          # The guard removes it on every exit path; if it survives, the admin
+          # credential is sitting on the host's persistent data volume.
+          # Wait on the post-cleanup marker, NOT "complete" — the latter is logged
+          # inside the impl, before the wrapper's rm, so checking on it races.
+          for h in clusterio-host-1 clusterio-host-2; do
+            timeout 120 bash -c "until docker logs $h 2>&1 | grep -q 'derived control config removed'; do sleep 3; done" \
+              || { echo "FAIL: $h never reported cleanup"; docker logs "$h" 2>&1 | grep 'boot-race guard:' | tail -6; exit 1; }
+            docker exec "$h" test -e /clusterio/data/.guard-control.json \
+              && { echo "FAIL: $h still holds .guard-control.json after the guard completed"; exit 1; } \
+              || echo "PASS: $h cleaned up its derived admin-token copy"
           done
 
           echo "=== TestInstance running after restart (guard bounces it if it raced) ==="

@@ -48,6 +48,24 @@ Factorio versions when they change.
     without secrets fails with the guidance; no credential assignment appears in `docker history`.
 - No image *content* change — the published images never took the build-time client path (CI
   passes only `CLUSTERIO_TARGET` and `BUILD_REVISION`). Clusterio stays `2.0.0-alpha.27`.
+- **Cluster-token hygiene on the shared-tokens volume.** `config-control.json` is a cluster-ADMIN
+  credential (its role holds `core.admin`, a wildcard over all 85 permissions) and every host
+  mounts it, so its file mode is a real blast-radius control.
+  - Token files are now created `0600` and explicitly `chown clusterio:clusterio` instead of
+    `0644`. The chown is load-bearing: hosts read them as uid 1001 over the shared volume, and a
+    root-owned `0600` file would lock every host out. Both images use uid 1001.
+  - The boot-race guard's derived copy (`/clusterio/data/.guard-control.json`) is `0600` and now
+    **removed on every guard exit path**. It previously persisted on the host's data volume
+    indefinitely — found on a live host dated weeks after creation — leaving an admin credential
+    on a volume that outlives the tokens mount.
+  - The guard emits `derived control config removed` *after* the unlink, so waiting on it is a
+    real barrier; the pre-existing `complete` line is logged before cleanup and would race.
+  - CI asserts all three: mode/owner on every shared token, that host-1 can still read its token
+    as `clusterio` (catching an over-tightening that would pass a mode check but break the
+    cluster), and that the derived copy is gone.
+  - `SECURITY.md` documents the trust boundary: an untrusted external plugin on any host is one
+    file read away from cluster admin. Not changed here — scoping that credential to a
+    least-privilege role is the real fix and is a separate design change.
 
 ## 2026-07-22
 

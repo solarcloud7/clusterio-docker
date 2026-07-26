@@ -95,6 +95,12 @@ if [ ! -f "$CONFIG_PATH" ]; then
   # Fail with a clear message rather than a cryptic `mv` error if it's absent.
   if [ -f /clusterio/config-control.json ]; then
     mv /clusterio/config-control.json "$CONTROL_CONFIG"
+    # 0600, explicitly owned by clusterio. The chown is not optional: hosts read
+    # this over the shared volume as uid 1001, so a root-owned 0600 file would
+    # lock them out. Both images use the same clusterio uid, so 1001 works
+    # cross-container. (This token is cluster-ADMIN — see SECURITY.md.)
+    chown clusterio:clusterio "$CONTROL_CONFIG"
+    chmod 600 "$CONTROL_CONFIG"
   else
     echo "ERROR: create-ctl-config did not produce /clusterio/config-control.json — cannot provision API token" >&2
     exit 1
@@ -106,7 +112,13 @@ if [ ! -f "$CONFIG_PATH" ]; then
     echo "Generating tokens for $HOST_COUNT host(s)..."
     
     for HOST_ID in $(seq 1 $HOST_COUNT); do
-      gosu clusterio npx clusteriocontroller --log-level error bootstrap generate-host-token "$HOST_ID" --config "$CONFIG_PATH" > "$TOKENS_DIR/clusterio-host-${HOST_ID}.token"
+      HOST_TOKEN_FILE="$TOKENS_DIR/clusterio-host-${HOST_ID}.token"
+      gosu clusterio npx clusteriocontroller --log-level error bootstrap generate-host-token "$HOST_ID" --config "$CONFIG_PATH" > "$HOST_TOKEN_FILE"
+      # The redirect above is performed by THIS shell (root), not by gosu, so the
+      # file lands root-owned regardless of the gosu on the command. Hosts read it
+      # as clusterio (uid 1001), so chown before tightening or they lock out.
+      chown clusterio:clusterio "$HOST_TOKEN_FILE"
+      chmod 600 "$HOST_TOKEN_FILE"
       echo "  Token generated: clusterio-host-${HOST_ID}.token"
     done
   fi
