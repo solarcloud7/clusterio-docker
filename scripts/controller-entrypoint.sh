@@ -207,13 +207,26 @@ if [ "$FIRST_RUN" = true ] || [ ! -f "$SEED_MARKER" ]; then
   # Seed mods before instances (instances may need them to start)
   /scripts/seed-mods.sh "$CONTROL_CONFIG" "$MOD_PACK_ID"
 
-  # Seed instances from seed-data/hosts/
-  /scripts/seed-instances.sh "$CONTROL_CONFIG" "$HOST_COUNT"
+  # Seed instances from seed-data/hosts/. A non-zero exit means at least one
+  # instance failed; the script has already logged which and why.
+  SEED_RC=0
+  /scripts/seed-instances.sh "$CONTROL_CONFIG" "$HOST_COUNT" || SEED_RC=$?
 
-  # Mark seeding as complete so restarts don't re-seed
-  touch "$SEED_MARKER"
-  chown clusterio:clusterio "$SEED_MARKER"
-  echo "Seeding complete."
+  if [ "$SEED_RC" -eq 0 ]; then
+    # Mark seeding as complete so restarts don't re-seed
+    touch "$SEED_MARKER"
+    chown clusterio:clusterio "$SEED_MARKER"
+    echo "Seeding complete."
+  else
+    # Deliberately NOT fatal, and deliberately still "healthy" below. Aborting
+    # here would exit the entrypoint and restart-loop the container on a
+    # permanently bad instance.json, and marking the controller unhealthy would
+    # block hosts (they gate on controller health) — turning a partial seeding
+    # failure into a dead cluster. Instead: stay up, be loud, and withhold the
+    # marker so the next start retries. Existing instances are skipped by the
+    # idempotency check, so the retry is cheap.
+    echo "WARNING: instance seeding reported failures — NOT writing $SEED_MARKER, so the next start will retry. Review the ERROR lines above." >&2
+  fi
 else
   # Not first run — upload any new mods added since last run (existing mods are skipped)
   /scripts/seed-mods.sh "$CONTROL_CONFIG" "$MOD_PACK_ID"

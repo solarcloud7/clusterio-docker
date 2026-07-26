@@ -20,6 +20,39 @@ CONTROL_CONFIG="$1"
 HOST_COUNT="${2:-0}"
 SEED_DATA_DIR="/clusterio/seed-data"
 
+# Count of operations that failed. Seeding continues past a failure (one bad
+# instance must not strand the others) but the script exits non-zero so the
+# caller can decline to write .seed-complete and retry on the next start.
+SEED_FAILURES=0
+
+# ---------------------------------------------------------------------------
+# Run a clusterioctl seeding command, surfacing its stderr when it fails.
+#
+# These calls used to be `... 2>/dev/null || true`, which discarded BOTH the exit
+# status and the diagnostic. A failed `instance create` then let assign, upload
+# and start run against an instance that did not exist — each of those swallowed
+# too — so the only symptom was the 120s start-loop timeout, by which point the
+# real error was unrecoverable.
+# ---------------------------------------------------------------------------
+ctl_seed() {
+  local what="$1"; shift
+  local err rc=0
+  # 2>&1 >/dev/null keeps stderr and drops stdout: the table output is noise
+  # here, the error text is the whole point.
+  err=$(gosu clusterio npx clusterioctl --log-level error "$@" \
+    --config "$CONTROL_CONFIG" 2>&1 >/dev/null) || rc=$?
+  if [ "$rc" -ne 0 ]; then
+    echo "      ERROR: $what failed (exit $rc)" >&2
+    if [ -n "$err" ]; then
+      printf '        %s\n' "$err" >&2
+    else
+      echo "        (command produced no error output)" >&2
+    fi
+    SEED_FAILURES=$((SEED_FAILURES + 1))
+  fi
+  return "$rc"
+}
+
 # Fields that must NOT be seeded — they are runtime/environment-specific
 SKIP_FIELDS=(
   "instance.id"
@@ -155,14 +188,20 @@ seed_instance() {
 
   echo "    Creating instance: $instance_name"
 
-  # Create the instance
-  gosu clusterio npx clusterioctl --log-level error instance create "$instance_name" \
-    --config "$CONTROL_CONFIG" 2>/dev/null || true
+  # Create the instance. Everything below depends on it existing, so bail out of
+  # this instance rather than running assign/upload/start against nothing.
+  ctl_seed "instance create '$instance_name'" instance create "$instance_name" || {
+    echo "      Skipping remaining steps for '$instance_name' — it was not created." >&2
+    return 1
+  }
 
-  # Assign to host
+  # Assign to host. An unassigned instance cannot start, so the same applies.
   echo "      Assigning to host $host_id"
-  gosu clusterio npx clusterioctl --log-level error instance assign "$instance_name" "$host_id" \
-    --config "$CONTROL_CONFIG" 2>/dev/null || true
+  ctl_seed "instance assign '$instance_name' -> host $host_id" \
+    instance assign "$instance_name" "$host_id" || {
+    echo "      Skipping remaining steps for '$instance_name' — it is not assigned to a host." >&2
+    return 1
+  }
 
   # Apply instance.json configuration (if present)
   if [ -f "${instance_dir}instance.json" ]; then
@@ -177,28 +216,44 @@ seed_instance() {
     echo "      INFO: '$instance_name' has no explicit auto_pause setting — headless servers pause at 0 players, freezing on_tick plugins (see docs/seed-data.md)"
   fi
 
-  # Upload save files (.zip)
+  # Upload save files (.zip). A failed upload used to be entirely silent and the
+  # instance then auto-started on a FRESH map — a silently wrong world that looks
+  # healthy. Fail loudly and leave it stopped for the operator instead.
+  local save_upload_failed=false
   for save_file in "${instance_dir}"*.zip; do
     if [ -f "$save_file" ]; then
       local save_name
       save_name=$(basename "$save_file")
       echo "      Uploading save: $save_name"
-      gosu clusterio npx clusterioctl --log-level error instance save upload "$instance_name" "$save_file" \
-        --config "$CONTROL_CONFIG" 2>/dev/null || true
+      ctl_seed "save upload '$save_name' -> '$instance_name'" \
+        instance save upload "$instance_name" "$save_file" || save_upload_failed=true
     fi
   done
 
   # Determine auto_start from instance.json (default: true)
   local auto_start=true
   if [ -f "${instance_dir}instance.json" ]; then
-    local parsed
+    local parsed parse_rc=0 parse_err_file
+    parse_err_file=$(mktemp)
     parsed=$(gosu clusterio node -e '
       const cfg = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8"));
       process.stdout.write(String(cfg["instance.auto_start"] ?? true));
-    ' "${instance_dir}instance.json" 2>/dev/null) || true
-    if [ "$parsed" = "false" ]; then
+    ' "${instance_dir}instance.json" 2>"$parse_err_file") || parse_rc=$?
+    if [ "$parse_rc" -ne 0 ]; then
+      # Malformed instance.json used to fall through silently to auto_start=true,
+      # so a typo'd config started an instance the operator meant to keep stopped.
+      echo "      WARNING: could not read instance.auto_start from ${instance_dir}instance.json — defaulting to true" >&2
+      sed 's/^/        /' "$parse_err_file" >&2 || true
+    elif [ "$parsed" = "false" ]; then
       auto_start=false
     fi
+    rm -f "$parse_err_file"
+  fi
+
+  # A missing save is not a reason to run a fresh map under the intended name.
+  if [ "$save_upload_failed" = "true" ]; then
+    echo "      NOT auto-starting '$instance_name': a save upload failed, so starting it now would create a new world. Fix the upload, then start it manually." >&2
+    auto_start=false
   fi
 
   if [ "$auto_start" = "true" ]; then
@@ -272,9 +327,18 @@ for host_dir in "$SEED_DATA_DIR/hosts"/*/; do
 
   for instance_dir in "$host_dir"*/; do
     if [ -d "$instance_dir" ]; then
-      seed_instance "$instance_dir" "$host_id"
+      # Tolerated on purpose, and only because seed_instance has already logged
+      # the reason and incremented SEED_FAILURES: one broken instance must not
+      # strand the rest of the cluster. The non-zero exit below is what carries
+      # the failure to the caller.
+      seed_instance "$instance_dir" "$host_id" || true
     fi
   done
 done
+
+if [ "$SEED_FAILURES" -gt 0 ]; then
+  echo "Instance seeding finished with $SEED_FAILURES failure(s) — see the ERROR lines above." >&2
+  exit 1
+fi
 
 echo "Instance seeding complete."
