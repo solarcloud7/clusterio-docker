@@ -1,25 +1,13 @@
 #!/bin/bash
 # seed-instances-order.test.sh
 #
-# Pins the one ordering property that keeps first-run seeding from killing a host
-# process: seeding must never push instance config to an ALREADY-ASSIGNED instance.
+# Asserts seed-instances.sh never pushes instance config after `instance assign`.
+# `npx` and `gosu` are shimmed onto PATH and every clusterioctl call is recorded.
 #
-# Why that is the property (see the block comment in scripts/seed-instances.sh):
-# the controller turns `instance config set` into an InstanceAssignInternalRequest,
-# the host applies it with notify=true, and a changed `factorio.settings` reaches
-# FactorioServer.dataPath() — which is path.join(null, …) until FactorioServer.init()
-# resolves. An unhandled rejection there takes clusteriohost down. While the instance
-# is unassigned no host holds it, so no listener exists for the emit to reach.
-#
-# The whole run is stubbed: `npx` and `gosu` are shimmed onto PATH and every
-# clusterioctl invocation is recorded to a call log. No Docker, no cluster, no
-# network — this belongs in the cheap `gates` CI job.
-#
-# requires: bash, node (for seed-instances.sh's own instance.json parsing), coreutils
-# produces: exit 0 when the ordering property holds, exit 1 with the call log dumped
-# does not: exercise the controller, the host, or any real clusterioctl behaviour —
-#           it asserts what the SCRIPT issues and in what order, nothing about what
-#           Clusterio does with those calls.
+# requires: bash, node (seed-instances.sh parses instance.json with it), coreutils
+# produces: exit 0 when the ordering holds, exit 1 with the call log dumped
+# does not: run Docker, a cluster, or any real clusterioctl — it checks which calls
+#           the script issues and in what order, not what Clusterio does with them.
 
 set -euo pipefail
 
@@ -32,15 +20,10 @@ FAILURES=0
 fail() { echo "FAIL: $*" >&2; FAILURES=$((FAILURES + 1)); }
 pass() { echo "PASS: $*"; }
 
-# ---------------------------------------------------------------------------
-# The order checker, used against both a real run and hand-written logs.
+# The order checker. Separate from the run so cases 2 and 3 can drive it directly.
 #
-# Kept separate from the run so the negative cases below can prove it has teeth:
-# a checker that cannot fail is indistinguishable from no checker at all.
-# ---------------------------------------------------------------------------
-# `|| true`: "no such call" is an ANSWER here, not an error. Under `set -e` +
-# pipefail a non-matching grep would abort the test instead of letting the
-# presence checks below report which call is missing.
+# `|| true`: "no such call" is an answer here, not an error — without it a
+# non-matching grep aborts the test under `set -e` + pipefail.
 first_line() { grep -nF -- "$2" "$1" 2>/dev/null | head -1 | cut -d: -f1 || true; }
 last_line()  { grep -nF -- "$2" "$1" 2>/dev/null | tail -1 | cut -d: -f1 || true; }
 
@@ -56,9 +39,8 @@ check_order() {
   start=$(first_line "$log" "instance start $name")
   last_config=$(last_line "$log" "instance config set $name")
 
-  # Presence first. Without this an empty or mis-shimmed log satisfies every
-  # ordering comparison below by having nothing to compare, and the test passes
-  # while measuring nothing.
+  # Presence first: an empty or mis-shimmed log has nothing to compare, so every
+  # ordering rule below would hold vacuously.
   for req in create:"$create" assign:"$assign" upload:"$upload" start:"$start"; do
     if [ -z "${req#*:}" ]; then
       echo "  no '${req%%:*}' call recorded for $name"
@@ -76,8 +58,7 @@ check_order() {
     echo "  config set for $name at line $last_config is AFTER assign at line $assign"
     rc=1
   fi
-  # Ordering that must survive the reorder: create first, and upload/start after
-  # assign (both need an assigned host).
+  # upload and start both need an assigned host, so they stay after assign.
   [ "$create" -lt "$assign" ] || { echo "  create ($create) is not before assign ($assign)"; rc=1; }
   [ "$upload" -gt "$assign" ] || { echo "  save upload ($upload) is not after assign ($assign)"; rc=1; }
   [ "$start" -gt "$upload" ]  || { echo "  start ($start) is not after save upload ($upload)"; rc=1; }
@@ -135,9 +116,9 @@ SH
 
 chmod +x "$WORK/bin/gosu" "$WORK/bin/npx"
 
-# Fixture seed tree. AutoInstance carries an instance.json (so config IS applied and
-# the ordering property has something to violate); NoConfigInstance has none and is
-# held stopped, which also exercises the auto_start=false branch.
+# AutoInstance's instance.json has parseable fields, so config IS applied and the
+# ordering has something to violate. NoConfigInstance is single-line JSON, which the
+# script's line-based parser yields no fields from, and it stays stopped.
 mkdir -p "$WORK/seed-data/hosts/clusterio-host-1/AutoInstance"
 mkdir -p "$WORK/seed-data/hosts/clusterio-host-1/NoConfigInstance"
 cat > "$WORK/seed-data/hosts/clusterio-host-1/AutoInstance/instance.json" <<'JSON'
@@ -181,8 +162,6 @@ else
   printf '%s\n' "$reasons" >&2
 fi
 
-# The instance held stopped still must not be configured after assign. It has an
-# instance.json (auto_start only), so a config push is possible but not required.
 if grep -qF "instance start NoConfigInstance" "$CALL_LOG"; then
   fail "NoConfigInstance was started despite instance.auto_start=false"
 else
@@ -199,10 +178,8 @@ else
   pass "NoConfigInstance: no config push after assign"
 fi
 
-# Catch-all over EVERY instance in the fixture, named or not: no config push may
-# follow the last assign. The per-instance checks above are the ones with teeth for
-# the current single-pass loop; this one is what still covers an instance added to
-# the fixture later, or a refactor that batches all assigns ahead of configuration.
+# Catch-all over every instance in the fixture, including ones added later or a
+# refactor that batches all assigns ahead of configuration.
 last_assign=$(last_line "$CALL_LOG" "instance assign ")
 last_any_config=$(last_line "$CALL_LOG" "instance config set ")
 if [ -n "$last_any_config" ] && [ -n "$last_assign" ] && [ "$last_any_config" -gt "$last_assign" ]; then

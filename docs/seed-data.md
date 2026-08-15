@@ -129,7 +129,7 @@ On **first run** (no `config-controller.json` exists) or if a previous first run
 1. The `seed-instances.sh` script scans `seed-data/hosts/` for directories
 2. Each host folder **must match** a hostname from docker-compose (e.g., `clusterio-host-1`)
 3. Instance folders under each host are created
-4. If an `instance.json` is present, its configuration is applied (server settings, plugins, etc.) — **while the instance is still unassigned**, so the push can never reach a host that has the instance mid-start (see "Config Before Assign" in `CLAUDE.md`)
+4. If an `instance.json` is present, its configuration is applied (server settings, plugins, etc.) — **while the instance is still unassigned**, so the push cannot reach a host that has the instance mid-start
 5. The instance is assigned to that host, which delivers the finished config in a single push
 6. Any `.zip` files are uploaded as saves to that instance
 7. If `EXPORT_HOST` is set and matches the host ID, `export-data` runs once before starting the first instance on that host (requires game client)

@@ -197,29 +197,10 @@ seed_instance() {
     return 1
   }
 
-  # Apply instance.json configuration (if present) BEFORE the instance is assigned
-  # to a host.
-  #
-  # A config push to an ALREADY-ASSIGNED instance is what kills a host process during
-  # first-run bring-up. The controller turns `instance config set` into an
-  # InstanceAssignInternalRequest (Controller.instanceConfigUpdated), which the host
-  # applies to the live config with notify=true. A CHANGED `factorio.settings` then
-  # runs Instance._configFieldChanged -> updateFactorioSettings -> resolveServerSettings
-  # -> FactorioServer.exampleSettings -> dataPath(). `_dataDir` stays null until
-  # FactorioServer.init() resolves, so when that instance is mid-start on a host still
-  # downloading Factorio, dataPath() is path.join(null, …): an unhandled rejection that
-  # takes clusteriohost down. The container restarts, the controller drops the duplicate
-  # session, and every request pending on it — including anything the operator had in
-  # flight — rejects with "Session Closed". Measured on @clusterio/host 2.0.0-alpha.27;
-  # full log-cited trace in solarcloud7/clusterio-surface-export#226.
-  #
-  # While the instance is UNASSIGNED, no host holds it in assignedInstances, so no host
-  # can have constructed an Instance and no `fieldChanged` listener exists anywhere for
-  # the emit to reach — regardless of what else is driving the cluster concurrently.
-  # The controller accepts the field (instanceConfigUpdated is a no-op push when
-  # assigned_host is null) and `instance assign` then hands the finished config to the
-  # host in its fresh-instance branch, which applies it with notify=FALSE. Seeding
-  # pushes no config after assign at all.
+  # Applied while the instance is still UNASSIGNED: config pushed to an ASSIGNED
+  # instance reaches its host with notify=true and can fault a host that is starting it.
+  # Assign then delivers the finished config once, with notify=false.
+  # Order pinned by tests/seed-instances-order.test.sh.
   if [ -f "${instance_dir}instance.json" ]; then
     apply_instance_config "$instance_name" "${instance_dir}instance.json"
   fi
