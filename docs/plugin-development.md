@@ -32,10 +32,10 @@ guide is for writing one.
    `legacy-peer-deps=true` and keep your host-side dev types in a directory *above* the plugin
    (they resolve via Node's upward walk). Two proven workstation patterns from production
    consumers: **repo-root devDeps** (the `@clusterio` types live in a parent `package.json`
-   that is never mounted into containers — clustorio-atlas), or **isolated-container builds**
-   (build in a throwaway node container with a named volume shadowing `node_modules` —
-   FactorioSurfaceExport's `build-plugin.ps1`). Never run a bare install inside the mounted
-   plugin dir.
+   that is never mounted into containers), or **isolated-container builds** (a build script
+   that compiles in a throwaway node container, with a named volume shadowing `node_modules`
+   so the mounted plugin dir never receives an install). Never run a bare install inside the
+   mounted plugin dir.
 2. **Node plugin code is cached by the long-lived host process.** An `instance stop/start`
    re-patches the save-embedded **Lua** module but does **not** reload plugin **Node** code —
    the require cache keeps serving the old build (and it will even log "plugin initialized").

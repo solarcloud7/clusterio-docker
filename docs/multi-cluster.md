@@ -13,14 +13,14 @@ first-class. Four global namespaces can collide; parametrize all four per cluste
 | **External volumes** | `external: true` names are global — two clusters sharing `factorio-client` will clobber each other's client install (a 2.0 cluster refreshing a 2.1 cluster's client, or vice versa) | `FACTORIO_CLIENT_VOLUME` (`.env`) |
 | **Compose project name** | Non-external volumes/networks are prefixed by project (directory) name — two checkouts in same-named dirs share them | `COMPOSE_PROJECT_NAME` or distinct directory names |
 
-## Worked example (a real machine)
+## Worked example (two clusters, one Docker host)
 
-| | Cluster A (`surface-export`) | Cluster B (`atlas`) |
+| | Cluster A | Cluster B |
 |---|---|---|
 | Controller UI | `8080` | `8090` |
 | Game UDP (host-side) | `34100-34109`, `34200-34209` | `34300` (→ container 34100) |
 | Client volume | `factorio-client` | `factorio-client-21` |
-| Container prefix | `surface-export-` | `atlas-` |
+| Container prefix | `cluster-a-` | `cluster-b-` |
 
 Cluster B's `.env`:
 
