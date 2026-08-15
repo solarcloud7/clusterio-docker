@@ -11,6 +11,15 @@ change notice: container → sha → this file.
 Format: `## YYYY-MM-DD` heading + short bullets. Always state the Clusterio /
 Factorio versions when they change.
 
+## 2026-08-15
+
+- **Instance seeding applies `instance.json` before `instance assign`, not after.** Config pushed
+  to an already-assigned instance reaches its host with `notify=true` and can fault a host that is
+  starting that instance; while the instance is unassigned there is no host to push to, and assign
+  then delivers the finished config once. New `tests/seed-instances-order.test.sh` pins the order
+  in the `gates` job, and `SEED_DATA_DIR` is overridable (default unchanged) so it can run against
+  a fixture tree. Clusterio stays `2.0.0-alpha.27`.
+
 ## 2026-07-26
 
 - **Publishing is now gated on the integration suite.** `build` pushed to GHCR while `test` ran

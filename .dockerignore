@@ -26,8 +26,9 @@ docs/
 # Seed data (mounted at runtime, not baked into image)
 seed-data/
 
-# Development tools
+# Development tools and tests (tests run in CI's gates job, never in an image)
 tools/
+tests/
 *.ps1
 
 # Runtime data (should not be in build context)

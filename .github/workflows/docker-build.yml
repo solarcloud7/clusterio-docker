@@ -53,6 +53,11 @@ jobs:
           fi
           echo "Changelog gate OK."
 
+      # Stubbed, no Docker. The integration suite cannot cover this ordering — the
+      # fault it prevents only appears when an external start races the seeding.
+      - name: Seed ordering — no config push after assign
+        run: bash tests/seed-instances-order.test.sh
+
       - name: Resolve Clusterio version for release image tag
         id: clusterio_version
         run: echo "version=$(sed -nE 's/^ARG CLUSTERIO_VERSION=([^[:space:]]+).*/\1/p' Dockerfile.host | head -1)" >> "$GITHUB_OUTPUT"

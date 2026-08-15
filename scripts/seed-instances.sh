@@ -18,7 +18,9 @@ set -eo pipefail
 
 CONTROL_CONFIG="$1"
 HOST_COUNT="${2:-0}"
-SEED_DATA_DIR="/clusterio/seed-data"
+# Overridable so the ordering test (tests/seed-instances-order.test.sh) can point
+# the script at a fixture tree. Production always uses the mounted default.
+SEED_DATA_DIR="${SEED_DATA_DIR:-/clusterio/seed-data}"
 
 # Count of operations that failed. Seeding continues past a failure (one bad
 # instance must not strand the others) but the script exits non-zero so the
@@ -195,6 +197,14 @@ seed_instance() {
     return 1
   }
 
+  # Applied while the instance is still UNASSIGNED: config pushed to an ASSIGNED
+  # instance reaches its host with notify=true and can fault a host that is starting it.
+  # Assign then delivers the finished config once, with notify=false.
+  # Order pinned by tests/seed-instances-order.test.sh.
+  if [ -f "${instance_dir}instance.json" ]; then
+    apply_instance_config "$instance_name" "${instance_dir}instance.json"
+  fi
+
   # Assign to host. An unassigned instance cannot start, so the same applies.
   echo "      Assigning to host $host_id"
   ctl_seed "instance assign '$instance_name' -> host $host_id" \
@@ -202,11 +212,6 @@ seed_instance() {
     echo "      Skipping remaining steps for '$instance_name' — it is not assigned to a host." >&2
     return 1
   }
-
-  # Apply instance.json configuration (if present)
-  if [ -f "${instance_dir}instance.json" ]; then
-    apply_instance_config "$instance_name" "${instance_dir}instance.json"
-  fi
 
   # auto_pause foot-gun visibility: a headless server with Factorio's default
   # auto_pause=true pauses at 0 players, silently freezing on_tick plugin
