@@ -18,7 +18,9 @@ set -eo pipefail
 
 CONTROL_CONFIG="$1"
 HOST_COUNT="${2:-0}"
-SEED_DATA_DIR="/clusterio/seed-data"
+# Overridable so the ordering test (tests/seed-instances-order.test.sh) can point
+# the script at a fixture tree. Production always uses the mounted default.
+SEED_DATA_DIR="${SEED_DATA_DIR:-/clusterio/seed-data}"
 
 # Count of operations that failed. Seeding continues past a failure (one bad
 # instance must not strand the others) but the script exits non-zero so the
@@ -195,6 +197,33 @@ seed_instance() {
     return 1
   }
 
+  # Apply instance.json configuration (if present) BEFORE the instance is assigned
+  # to a host.
+  #
+  # A config push to an ALREADY-ASSIGNED instance is what kills a host process during
+  # first-run bring-up. The controller turns `instance config set` into an
+  # InstanceAssignInternalRequest (Controller.instanceConfigUpdated), which the host
+  # applies to the live config with notify=true. A CHANGED `factorio.settings` then
+  # runs Instance._configFieldChanged -> updateFactorioSettings -> resolveServerSettings
+  # -> FactorioServer.exampleSettings -> dataPath(). `_dataDir` stays null until
+  # FactorioServer.init() resolves, so when that instance is mid-start on a host still
+  # downloading Factorio, dataPath() is path.join(null, …): an unhandled rejection that
+  # takes clusteriohost down. The container restarts, the controller drops the duplicate
+  # session, and every request pending on it — including anything the operator had in
+  # flight — rejects with "Session Closed". Measured on @clusterio/host 2.0.0-alpha.27;
+  # full log-cited trace in solarcloud7/clusterio-surface-export#226.
+  #
+  # While the instance is UNASSIGNED, no host holds it in assignedInstances, so no host
+  # can have constructed an Instance and no `fieldChanged` listener exists anywhere for
+  # the emit to reach — regardless of what else is driving the cluster concurrently.
+  # The controller accepts the field (instanceConfigUpdated is a no-op push when
+  # assigned_host is null) and `instance assign` then hands the finished config to the
+  # host in its fresh-instance branch, which applies it with notify=FALSE. Seeding
+  # pushes no config after assign at all.
+  if [ -f "${instance_dir}instance.json" ]; then
+    apply_instance_config "$instance_name" "${instance_dir}instance.json"
+  fi
+
   # Assign to host. An unassigned instance cannot start, so the same applies.
   echo "      Assigning to host $host_id"
   ctl_seed "instance assign '$instance_name' -> host $host_id" \
@@ -202,11 +231,6 @@ seed_instance() {
     echo "      Skipping remaining steps for '$instance_name' — it is not assigned to a host." >&2
     return 1
   }
-
-  # Apply instance.json configuration (if present)
-  if [ -f "${instance_dir}instance.json" ]; then
-    apply_instance_config "$instance_name" "${instance_dir}instance.json"
-  fi
 
   # auto_pause foot-gun visibility: a headless server with Factorio's default
   # auto_pause=true pauses at 0 players, silently freezing on_tick plugin

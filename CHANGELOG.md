@@ -11,6 +11,42 @@ change notice: container → sha → this file.
 Format: `## YYYY-MM-DD` heading + short bullets. Always state the Clusterio /
 Factorio versions when they change.
 
+## 2026-08-15
+
+- **Instance seeding applies `instance.json` BEFORE assigning the instance to a host.** A config
+  push to an already-assigned instance is what kills a host process during first-run bring-up: the
+  controller turns `instance config set` into an `InstanceAssignInternalRequest`
+  (`Controller.instanceConfigUpdated`), the host applies it with `notify=true`, and a changed
+  `factorio.settings` runs `Instance._configFieldChanged` → `updateFactorioSettings` →
+  `resolveServerSettings` → `FactorioServer.exampleSettings` → `dataPath()`. `_dataDir` is null
+  until `FactorioServer.init()` resolves — behind a multi-second `checkForUpdates` download on a
+  host with no Factorio installed — so that call is `path.join(null, …)`: an unhandled rejection
+  that takes `clusteriohost` down. The controller then drops the restarted host's duplicate
+  session and every request pending on the old one fails with `Error: Session Closed`. A start
+  delivered through that window boots a fresh blank world, because the save upload had not
+  happened yet. Measured on `@clusterio/host` 2.0.0-alpha.27; log-cited trace in
+  [clusterio-surface-export#226](https://github.com/solarcloud7/clusterio-surface-export/pull/226).
+  - While the instance is **unassigned**, no host holds it in `assignedInstances`, so no `Instance`
+    object — and therefore no `fieldChanged` listener — exists for the emit to reach, whatever else
+    is driving the cluster concurrently. `instance assign` then delivers the finished config in the
+    host's fresh-instance branch, which applies it with `notify=false`. Seeding pushes no config
+    after assign at all.
+  - Structural side effect, not the reason for the change: the number of `clusterioctl`
+    invocations between `instance assign` and `instance save upload` drops from N+1 (one per
+    `instance.json` field) to 1.
+  - **Not fixed here**: the upstream crash in `@clusterio/host`, and any config change an operator,
+    the web UI, or a consumer's tooling makes while an instance is starting. A host that flaps and
+    is re-sent its assignments is unaffected — `Config._set` emits only when the value actually
+    changed, so an unchanged resend is inert.
+  - New `tests/seed-instances-order.test.sh`, run in the `gates` job: stubs `npx`/`gosu`, records
+    every `clusterioctl` call `seed-instances.sh` issues, and asserts no `instance config set`
+    follows an `instance assign`. Verified to fail against the previous ordering. The integration
+    suite cannot cover this — the crash only fires when a start races the seeding.
+  - `SEED_DATA_DIR` is now overridable (default unchanged) so the test can point the script at a
+    fixture tree.
+- No image content change beyond `scripts/seed-instances.sh` ordering. Clusterio stays
+  `2.0.0-alpha.27`.
+
 ## 2026-07-26
 
 - **Publishing is now gated on the integration suite.** `build` pushed to GHCR while `test` ran

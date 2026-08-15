@@ -53,6 +53,16 @@ jobs:
           fi
           echo "Changelog gate OK."
 
+      # Stubbed, no Docker, ~1s: asserts seed-instances.sh never pushes instance
+      # config to an ALREADY-ASSIGNED instance. That push is what reaches
+      # FactorioServer.dataPath() on a host whose FactorioServer.init() has not
+      # resolved yet, where it is path.join(null, …) — an unhandled rejection that
+      # kills clusteriohost mid-bring-up. The integration suite cannot see this: it
+      # only fires when a start races the seeding, so the ordering has to be pinned
+      # directly rather than waited for.
+      - name: Seed ordering — no config push after assign
+        run: bash tests/seed-instances-order.test.sh
+
       - name: Resolve Clusterio version for release image tag
         id: clusterio_version
         run: echo "version=$(sed -nE 's/^ARG CLUSTERIO_VERSION=([^[:space:]]+).*/\1/p' Dockerfile.host | head -1)" >> "$GITHUB_OUTPUT"

@@ -106,8 +106,9 @@ clusterio-docker/
 3. For each instance directory:
    a. Idempotency check: skip if instance name already exists
    b. Create instance via clusterioctl
-   c. Assign to host by numeric ID (extracted from hostname)
-   d. Apply instance.json config (if present), skipping runtime-specific fields
+   c. Apply instance.json config (if present), skipping runtime-specific fields —
+      while the instance is still UNASSIGNED (see Config Before Assign)
+   d. Assign to host by numeric ID (extracted from hostname)
    e. Upload .zip save files
    f. Start instance (unless instance.auto_start=false)
 ```
@@ -130,6 +131,30 @@ clusterio-docker/
 | Mod pack membership | ✅ | `--add-mods` is idempotent; already-added mods are unchanged |
 | API seeding block | ✅ | `.seed-complete` marker file |
 | Host configuration | ✅ | Config file existence + token desync detection |
+
+### Config Before Assign
+
+`seed-instances.sh` applies `instance.json` **before** `instance assign`, and pushes no config
+after it. Pinned by `tests/seed-instances-order.test.sh` (run in the `gates` CI job).
+
+A config push to an **already-assigned** instance becomes an `InstanceAssignInternalRequest`
+(`Controller.instanceConfigUpdated`), which the host applies with `notify=true`. A changed
+`factorio.settings` then runs `Instance._configFieldChanged` → `updateFactorioSettings` →
+`resolveServerSettings` → `FactorioServer.exampleSettings` → `dataPath()`. `_dataDir` is null
+until `FactorioServer.init()` resolves — which, on a host with no Factorio installed, is behind a
+multi-second `checkForUpdates` download — so `dataPath()` is `path.join(null, …)`: an unhandled
+rejection that kills `clusteriohost`. The controller then drops the restarted host's duplicate
+session and every request pending on the old one fails with `Error: Session Closed`. Measured on
+`@clusterio/host` 2.0.0-alpha.27; log-cited trace in
+[clusterio-surface-export#226](https://github.com/solarcloud7/clusterio-surface-export/pull/226).
+
+While the instance is unassigned, no host has it in `assignedInstances`, so no `Instance` object —
+and therefore no `fieldChanged` listener — exists for the emit to reach. `instance assign` then
+delivers the finished config in the host's fresh-instance branch, which applies it with
+`notify=false`.
+
+**Not fixed here**: the upstream crash itself, and any config change an operator or consumer makes
+while an instance is starting. Both remain.
 
 ### Token Desync Detection
 When the controller volume is wiped but host volumes persist, the controller generates new tokens that won't match what hosts have stored. The host entrypoint compares its stored token against the shared token volume — if they differ, it deletes its config and reconfigures from scratch.
