@@ -279,24 +279,31 @@ Releases happen on the default branch (`main`) and build the **`release`** targe
 1. **Bump the version** — set `ARG CLUSTERIO_VERSION` to the new Clusterio version in **both** `Dockerfile.controller` and `Dockerfile.host` (e.g. `2.0.0-alpha.27`). This single value pins the `@clusterio/*` npm packages **and** the published image tag. Update the version references in this file, `README.md`, and `docs/consumer-integration.md` to match (CI's version-assert gate fails otherwise).
 2. **Open a PR → merge to `main`.** On a PR, CI builds the `release` target and runs the full integration suite (seeding, instance start, idempotent restart) — exactly what will publish. Merge once green.
 3. **Publish is automatic on the `main` push.** Both images publish to GHCR tagged `:latest` **and** `:<CLUSTERIO_VERSION>` (e.g. `:2.0.0-alpha.27`). The version tag is read from the `CLUSTERIO_VERSION` build arg, so it always matches what's installed. These are **moving** tags — a rebuild on the same Clusterio version overwrites them.
-4. **Cut an immutable revision pin** — to publish a reproducible pin, `git tag <CLUSTERIO_VERSION>-r<N>` (e.g. `2.0.0-alpha.27-r1`) and push the tag. CI's tag build publishes `:<CLUSTERIO_VERSION>-r<N>` verbatim on the `release` target. `-rN` resets to `r1` on each Clusterio bump; increment it for docker-layer rebuilds/fixes that ship on the same Clusterio version. See "Versioning" below.
+4. **Cut an immutable revision pin** — to publish a reproducible pin, `git tag <CLUSTERIO_VERSION>.r<N>` (e.g. `2.0.0-alpha.27.r1`) and push the tag. CI's tag build publishes `:<CLUSTERIO_VERSION>.r<N>` verbatim on the `release` target. `.rN` resets to `r1` on each Clusterio bump; increment it for docker-layer rebuilds/fixes that ship on the same Clusterio version. See "Versioning" below.
 5. **Make packages public (one-time).** GHCR packages default to private. To allow public `docker pull`: GitHub → profile → Packages → each package (`clusterio-docker-controller`, `clusterio-docker-host`) → Package settings → Change visibility → Public.
 
 ### Versioning (Clusterio version + docker revision)
 
 clusterio-docker's version **tracks the Clusterio version**, with a docker-layer revision suffix
-`-rN` for rebuilds/fixes that ship on the same Clusterio version. There is **no** separate repo
+`.rN` for rebuilds/fixes that ship on the same Clusterio version. There is **no** separate repo
 SemVer (the old `vMAJOR.MINOR.PATCH` scheme is retired; the `v1.1.0` git tag stays in history but
 no new `v*` tags are cut). Tags carried by a build:
 
 - `:<CLUSTERIO_VERSION>` — e.g. `:2.0.0-alpha.27` — the bundled Clusterio version. **Moves** as the docker layer rebuilds.
-- `:<CLUSTERIO_VERSION>-rN` — e.g. `:2.0.0-alpha.27-r1` — the **immutable** pin (cut a git tag to mint one). `N` resets to `r1` on each Clusterio bump; bump it for docker-layer changes on the same Clusterio version.
+- `:<CLUSTERIO_VERSION>.rN` — e.g. `:2.0.0-alpha.27.r1` — the **immutable** pin (cut a git tag to mint one). `N` resets to `r1` on each Clusterio bump; bump it for docker-layer changes on the same Clusterio version.
 - `:latest`, `:main` — newest `main` build. Move.
 
-**Revision (`-rN`) discipline**: increment `-rN` for any image-affecting change on an unchanged
+**Separator is `.` not `-`**: a hyphen (`2.0.0-alpha.27-r1`) makes `27-r1` a single alphanumeric
+SemVer prerelease identifier. SemVer precedence ranks alphanumeric identifiers above purely-numeric
+ones at the same field position, so that tag would sort as *newer* than `2.0.0-alpha.28` under any
+SemVer-aware tooling (Renovate, Dependabot, etc.) — the exact bug flagged for Clusterio's own
+`22b`-style pre-release tags. The `.` keeps `rN` a separate dot-delimited identifier, so numeric
+comparison on the Clusterio version field (`27` vs `28`) still wins first.
+
+**Revision (`.rN`) discipline**: increment `.rN` for any image-affecting change on an unchanged
 Clusterio version (entrypoint/seeding/compose fixes, security rebuilds). A breaking
 docker-interface change (env/volume/behavior) is signalled by the CHANGELOG notice (the changelog
-gate enforces one) plus the `-rN` bump — consumers pin `:<version>-rN` and read CHANGELOG before
+gate enforces one) plus the `.rN` bump — consumers pin `:<version>.rN` and read CHANGELOG before
 moving to a new pin. There is no separate "major" signal.
 
 **Note:** the Clusterio (npm) version is independent of the Factorio version Clusterio downloads at runtime (or, when baking, `FACTORIO_HEADLESS_TAG`).

@@ -6,9 +6,14 @@ on:
     # GitHub's single-star stops at '/'. That keeps feature branches from publishing
     # image tags. Pre-merge validation for release branches comes from pull_request below.
     branches: ['*']
-    # Immutable revision pins: git tag <CLUSTERIO_VERSION>-r<N> (e.g. 2.0.0-alpha.27-r1)
+    # Immutable revision pins: git tag <CLUSTERIO_VERSION>.r<N> (e.g. 2.0.0-alpha.27.r1)
     # → published verbatim on the release target. Replaces the retired v* SemVer tags.
-    tags: ['*-r[0-9]*']
+    # NOTE: the separator before "r<N>" MUST be "." not "-". A hyphen makes "27-r1" a
+    # single alphanumeric SemVer prerelease identifier, which SemVer-aware tooling (e.g.
+    # Renovate/Dependabot) ranks ABOVE any purely-numeric identifier — so "2.0.0-alpha.27-r1"
+    # would sort as newer than "2.0.0-alpha.28". "." keeps "r<N>" a separate identifier,
+    # so numeric comparison on the "27" field still applies first.
+    tags: ['*.r[0-9]*']
   pull_request:
     branches: [main, 'factorio-*']
 
@@ -82,7 +87,7 @@ jobs:
           [ "$rc" -eq 0 ] \
             || { echo "Update the stale file(s) alongside the CLUSTERIO_VERSION bump (see CLAUDE.md Release Process step 1)."; exit 1; }
 
-      # A revision pin tag (e.g. 2.0.0-alpha.27-r1) must match the CLUSTERIO_VERSION
+      # A revision pin tag (e.g. 2.0.0-alpha.27.r1) must match the CLUSTERIO_VERSION
       # baked into the image — otherwise the immutable pin would lie about its contents.
       - name: Assert revision-pin tag matches CLUSTERIO_VERSION
         if: github.ref_type == 'tag'
@@ -91,8 +96,8 @@ jobs:
           T: ${{ github.ref_name }}
         run: |
           case "$T" in
-            "$V"-r[0-9]*) echo "OK: tag '$T' pins CLUSTERIO_VERSION '$V'";;
-            *) echo "::error::Git tag '$T' must be '<CLUSTERIO_VERSION>-r<N>' with CLUSTERIO_VERSION=$V (from Dockerfile.host). Bump the Dockerfiles or fix the tag."; exit 1;;
+            "$V".r[0-9]*) echo "OK: tag '$T' pins CLUSTERIO_VERSION '$V'";;
+            *) echo "::error::Git tag '$T' must be '<CLUSTERIO_VERSION>.r<N>' with CLUSTERIO_VERSION=$V (from Dockerfile.host). Bump the Dockerfiles or fix the tag."; exit 1;;
           esac
 
   # Builds and PUBLISHES. `needs: test` is the point: the push used to happen in
@@ -167,7 +172,7 @@ jobs:
         with:
           images: ${{ env.REGISTRY }}/${{ env.CONTROLLER_IMAGE }}
           # latest=false: :latest is controlled solely by the is_default_branch raw tag
-          # below. Without this, a git-tag (-rN pin) push would auto-move :latest onto the
+          # below. Without this, a git-tag (.rN pin) push would auto-move :latest onto the
           # pinned build.
           flavor: latest=false
           tags: |
@@ -188,7 +193,7 @@ jobs:
         with:
           images: ${{ env.REGISTRY }}/${{ env.HOST_IMAGE }}
           # latest=false: :latest is controlled solely by the is_default_branch raw tag
-          # below. Without this, a git-tag (-rN pin) push would auto-move :latest onto the
+          # below. Without this, a git-tag (.rN pin) push would auto-move :latest onto the
           # pinned build.
           flavor: latest=false
           tags: |

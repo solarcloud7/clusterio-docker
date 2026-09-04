@@ -53,18 +53,21 @@ docker pull ghcr.io/solarcloud7/clusterio-docker-host:latest
 
 ### Image tags & provenance
 
-Image versions **track the Clusterio version**, with a docker-layer revision (`-rN`) for rebuilds
+Image versions **track the Clusterio version**, with a docker-layer revision (`.rN`) for rebuilds
 or fixes that ship on the same Clusterio version. Pick a moving tag for "newest", a revision pin
 for reproducibility:
 
 | Tag | Meaning | Mutability |
 |-----|---------|------------|
-| `:2.0.0-alpha.27-r1` | Clusterio version **+** docker revision | **immutable pin — pin this** |
+| `:2.0.0-alpha.27.r1` | Clusterio version **+** docker revision | **immutable pin — pin this** |
 | `:2.0.0-alpha.27` | bundled Clusterio version (`main` builds) | moves as the docker layer rebuilds |
 | `:latest` | newest `main` build | moves |
 | `:main` | newest `main` build (alias of `:latest`) | moves |
 
-`-rN` resets to `r1` on each Clusterio bump; you cut a `2.0.0-alpha.27-rN` git tag to mint an
+`.rN` (dot, not hyphen — a hyphen would make `27-r1` a single alphanumeric SemVer prerelease
+identifier, which SemVer-aware tooling ranks above any purely-numeric identifier like `28`,
+so `2.0.0-alpha.27-r1` would sort as newer than `2.0.0-alpha.28`) resets to `r1` on each
+Clusterio bump; you cut a `2.0.0-alpha.27.rN` git tag to mint an
 immutable pin. `main` also publishes a convenience pair tag `:main-clusterio-<version>` (moves per
 rebuild). Custom/fork lines (see Branch model) publish under their branch name instead, e.g.
 `:factorio-2.2` + `:factorio-2.2-clusterio-<version>`.

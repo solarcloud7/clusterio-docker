@@ -11,6 +11,21 @@ change notice: container → sha → this file.
 Format: `## YYYY-MM-DD` heading + short bullets. Always state the Clusterio /
 Factorio versions when they change.
 
+## 2026-09-04
+
+- **Revision-pin separator changed from `-rN` to `.rN` (e.g. `2.0.0-alpha.27.r1`, not
+  `2.0.0-alpha.27-r1`).** A hyphen makes `27-r1` a single alphanumeric SemVer prerelease
+  identifier; SemVer precedence ranks alphanumeric identifiers above purely-numeric ones at the
+  same field position, so `2.0.0-alpha.27-r1` would sort as *newer* than `2.0.0-alpha.28` under
+  SemVer-aware tooling (Renovate, Dependabot, etc.) — flagged before any `-rN` tag was ever cut, no
+  published pin exists under the old shape. `.rN` keeps the revision a separate dot-delimited
+  identifier, so numeric comparison on the Clusterio version field still wins first. Updated:
+  `.github/workflows/docker-build.yml` tag trigger/assert, `README.md`, `CLAUDE.md`,
+  `docs/consumer-integration.md`, `CONTRIBUTING.md`, `.env.example`, `docker-compose.yml`.
+- **Refreshed pinned `NODE_IMAGE` digest** (`node:24-bookworm-slim`) from a 2026-01-14 build to the
+  current 2026-08-27 build for Debian/Node security patches. Clusterio stays `2.0.0-alpha.27` (already
+  matched npm `latest`; no bump needed).
+
 ## 2026-08-15
 
 - **Instance seeding applies `instance.json` before `instance assign`, not after.** Config pushed

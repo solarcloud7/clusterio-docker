@@ -6,7 +6,7 @@
 # overlay:  docker compose -f docker-compose.yml -f docker-compose.dev.yml build
 #
 # Pin a specific image build by setting CLUSTERIO_IMAGE_TAG in .env — for
-# production prefer the immutable revision pin (e.g. 2.0.0-alpha.27-r1); the
+# production prefer the immutable revision pin (e.g. 2.0.0-alpha.27.r1); the
 # moving tags (:latest, :2.0.0-alpha.27) are rebuilt in place.
 #
 # To add more hosts:
