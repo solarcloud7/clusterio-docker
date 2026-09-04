@@ -17,11 +17,15 @@ Factorio versions when they change.
   `2.0.0-alpha.27-r1`).** A hyphen makes `27-r1` a single alphanumeric SemVer prerelease
   identifier; SemVer precedence ranks alphanumeric identifiers above purely-numeric ones at the
   same field position, so `2.0.0-alpha.27-r1` would sort as *newer* than `2.0.0-alpha.28` under
-  SemVer-aware tooling (Renovate, Dependabot, etc.) — flagged before any `-rN` tag was ever cut, no
-  published pin exists under the old shape. `.rN` keeps the revision a separate dot-delimited
-  identifier, so numeric comparison on the Clusterio version field still wins first. Updated:
-  `.github/workflows/docker-build.yml` tag trigger/assert, `README.md`, `CLAUDE.md`,
+  SemVer-aware tooling (Renovate, Dependabot, etc.). `.rN` keeps the revision a separate
+  dot-delimited identifier, so numeric comparison on the Clusterio version field still wins first.
+  Updated: `.github/workflows/docker-build.yml` tag trigger/assert, `README.md`, `CLAUDE.md`,
   `docs/consumer-integration.md`, `CONTRIBUTING.md`, `.env.example`, `docker-compose.yml`.
+  - **Correction**: an earlier version of this entry claimed no `-rN` tag had ever been published.
+    That was wrong — `2.0.0-alpha.27-r1` through `-r4` (cut 2026-07-22 through 2026-08-15) are
+    already live on GHCR under the old hyphen scheme. Those four are frozen as-is (not deleted —
+    deleting a published pin breaks anyone already using it); do not cut any more `-rN` tags.
+    `2.0.0-alpha.27.r5` is the next revision pin under the corrected scheme.
 - **Refreshed pinned `NODE_IMAGE` digest** (`node:24-bookworm-slim`) from a 2026-01-14 build to the
   current 2026-08-27 build for Debian/Node security patches. Clusterio stays `2.0.0-alpha.27` (already
   matched npm `latest`; no bump needed).

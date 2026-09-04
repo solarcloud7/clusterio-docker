@@ -28,6 +28,11 @@ image: ghcr.io/solarcloud7/clusterio-docker-host:latest
 > is **retired** — those tags are frozen at their last build and receive **no** further
 > updates. Re-pin to `:<version>.rN` (e.g. `:2.0.0-alpha.27.r1`).
 
+> **Migrating off `:2.0.0-alpha.27-r1` .. `-r4` (hyphen scheme):** these four were published
+> before a SemVer-precedence bug in the separator was caught (a hyphen makes `27-r1` sort as
+> *newer* than `alpha.28` under SemVer-aware tooling). They're frozen, not deleted — re-pin to
+> `:2.0.0-alpha.27.r5` (dot) or later; no further `-rN` (hyphen) tags will be cut.
+
 > **Note:** Image names include `-docker-` (derived from the repo name `clusterio-docker`).
 
 > **Export-data:** The extended per-category export spritesheets (recipes, signals,
