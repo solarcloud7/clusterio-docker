@@ -72,9 +72,27 @@ if ! client_in_image && ! client_in_volume \
   archive="/tmp/factorio-client.tar.xz"
   # Pass the credentialed URL via curl's config on stdin (-K -) so the Factorio
   # token does not appear in the process list / proc args during the download.
-  curl -fL --retry 8 -o "$archive" -K - <<EOF
+  # Explicit resume loop instead of curl --retry: --retry restarts a broken
+  # transfer from byte 0, which can never finish a multi-GB download over a
+  # link that keeps dropping mid-transfer; -C - resumes from the partial file.
+  # curl exit 33 = server refused the range request: discard the partial so the
+  # next attempt starts clean instead of failing 33 forever.
+  attempt=0
+  while :; do
+    rc=0
+    curl -fL -C - -o "$archive" -K - <<EOF || rc=$?
 url = "https://factorio.com/get-download/${FACTORIO_CLIENT_TAG}/${FACTORIO_CLIENT_BUILD}/linux64?username=${FACTORIO_USERNAME}&token=${FACTORIO_TOKEN}"
 EOF
+    if [ "$rc" -eq 0 ]; then break; fi
+    attempt=$((attempt + 1))
+    if [ "$attempt" -ge 30 ]; then
+      echo "ERROR: game client download failed after ${attempt} resume attempts (last curl exit ${rc})" >&2
+      exit 1
+    fi
+    if [ "$rc" -eq 33 ]; then rm -f "$archive"; fi
+    echo "Game client download interrupted (curl exit ${rc}, attempt ${attempt}/30) — resuming..."
+    sleep 5
+  done
   mkdir -p "$FACTORIO_CLIENT_VOLUME_DIR"
   tar -xJf "$archive" -C "$FACTORIO_CLIENT_VOLUME_DIR" --strip-components=1
   rm "$archive"
