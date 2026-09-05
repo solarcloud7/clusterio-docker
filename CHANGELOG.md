@@ -13,6 +13,11 @@ Factorio versions when they change.
 
 ## 2026-09-04
 
+- **Runtime game-client download now resumes instead of restarting from byte 0.**
+  `host-entrypoint.sh` replaces `curl --retry 8` with an explicit `-C -` resume loop
+  (30 attempts, exit-33 partials discarded); observed on a consumer cluster: a link
+  dropping every ~800 MB made the 4.2 GB Factorio 2.1.17 client download restart forever.
+
 - **Revision-pin separator changed from `-rN` to `.rN` (e.g. `2.0.0-alpha.27.r1`, not
   `2.0.0-alpha.27-r1`).** A hyphen makes `27-r1` a single alphanumeric SemVer prerelease
   identifier; SemVer precedence ranks alphanumeric identifiers above purely-numeric ones at the
