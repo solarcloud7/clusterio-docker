@@ -36,7 +36,8 @@ fi
 echo "Seeding ${#MOD_FILES[@]} mod(s) to controller..."
 
 # Track mods to add to the mod pack
-MODS_TO_ADD=()
+MOD_NAMES=()
+declare -A MOD_VERSIONS=()
 
 for mod_file in "${MOD_FILES[@]}"; do
   mod_filename=$(basename "$mod_file" .zip)
@@ -48,11 +49,24 @@ for mod_file in "${MOD_FILES[@]}"; do
 
   # Parse mod name and version from filename (Factorio convention: name_version.zip)
   # The last _N.N.N segment is the version; everything before is the mod name.
-  if [[ "$mod_filename" =~ ^(.+)_([0-9]+\..+)$ ]]; then
-    MODS_TO_ADD+=("${BASH_REMATCH[1]}:${BASH_REMATCH[2]}")
+  if [[ "$mod_filename" =~ ^(.+)_([0-9]+\.[0-9]+\.[0-9]+)$ ]]; then
+    mod_name="${BASH_REMATCH[1]}"
+    mod_version="${BASH_REMATCH[2]}"
+    previous_version="${MOD_VERSIONS[$mod_name]-}"
+    if [ -z "$previous_version" ]; then
+      MOD_NAMES+=("$mod_name")
+      MOD_VERSIONS["$mod_name"]="$mod_version"
+    else
+      MOD_VERSIONS["$mod_name"]=$(printf '%s\n' "$previous_version" "$mod_version" | LC_ALL=C sort -V | tail -n 1)
+    fi
   else
     echo "    WARNING: Could not parse name:version from '$mod_filename' — skipping mod pack add"
   fi
+done
+
+MODS_TO_ADD=()
+for mod_name in "${MOD_NAMES[@]}"; do
+  MODS_TO_ADD+=("$mod_name:${MOD_VERSIONS[$mod_name]}")
 done
 
 # Add all uploaded mods to the default mod pack (if ID was provided)
