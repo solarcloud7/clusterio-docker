@@ -11,6 +11,13 @@ change notice: container → sha → this file.
 Format: `## YYYY-MM-DD` heading + short bullets. Always state the Clusterio /
 Factorio versions when they change.
 
+## 2026-09-06
+
+- Mod seeding now adds only the highest numeric version of each exact mod name to
+  the default pack. All seed archives are still uploaded. Duplicate versions such
+  as `1.9.0` and `1.10.0` no longer let filename ordering select the older release.
+  Clusterio and Factorio version pins are unchanged.
+
 ## 2026-09-04
 
 - **Runtime game-client download now resumes instead of restarting from byte 0.**

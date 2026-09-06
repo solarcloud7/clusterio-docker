@@ -63,6 +63,9 @@ jobs:
       - name: Seed ordering — no config push after assign
         run: bash tests/seed-instances-order.test.sh
 
+      - name: Seed mods — highest numeric version per name
+        run: bash tests/seed-mod-versions.test.sh
+
       - name: Resolve Clusterio version for release image tag
         id: clusterio_version
         run: echo "version=$(sed -nE 's/^ARG CLUSTERIO_VERSION=([^[:space:]]+).*/\1/p' Dockerfile.host | head -1)" >> "$GITHUB_OUTPUT"
@@ -284,6 +287,16 @@ jobs:
           #   seed-data/hosts/clusterio-host-1/TestInstance/dummy.zip  (test save)
           #   seed-data/mods/squeak-through-2_0.2.0.zip               (test mod)
 
+          python3 - <<'PY'
+          import json, zipfile
+          for version in ("1.9.0", "1.10.0"):
+              name = "seed-version-probe"
+              info = dict(name=name, version=version, title="Seed version probe", author="Test",
+                          factorio_version="2.1", dependencies=["base >= 2.1.0"])
+              with zipfile.ZipFile(f"seed-data/mods/{name}_{version}.zip", "w") as archive:
+                  archive.writestr(f"{name}_{version}/info.json", json.dumps(info))
+          PY
+
           # Add a second instance on host-2 with auto_start disabled
           mkdir -p seed-data/hosts/clusterio-host-2/StoppedInstance
           echo '{"instance.auto_start": false}' > seed-data/hosts/clusterio-host-2/StoppedInstance/instance.json
@@ -381,6 +394,15 @@ jobs:
             mod-pack show "Space Age 2.1" 2>/dev/null | grep -q "squeak-through-2" \
             && echo "PASS: Mod 'squeak-through-2' in default mod pack" \
             || { echo "FAIL: Mod not found in default mod pack"; exit 1; }
+
+          MOD_PACK=$(docker exec clusterio-controller npx clusterioctl \
+            --config /clusterio/tokens/config-control.json mod-pack show "Space Age 2.1")
+          printf '%s\n' "$MOD_PACK" | grep -Eq 'seed-version-probe 1\.10\.0$' \
+            || { echo "FAIL: Mod pack did not select numeric-newest seed 1.10.0"; exit 1; }
+          if printf '%s\n' "$MOD_PACK" | grep -q 'seed-version-probe 1.9.0'; then
+            echo "FAIL: Mod pack still contains the older seed version"; exit 1
+          fi
+          echo "PASS: Real controller selected seed-version-probe 1.10.0"
 
       - name: Verify instance seeding
         run: |
