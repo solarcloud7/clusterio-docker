@@ -632,3 +632,5 @@ MIT License - See [LICENSE](LICENSE) for details.
 
 - [Clusterio GitHub](https://github.com/clusterio/clusterio)
 - [Clusterio Documentation](https://github.com/clusterio/clusterio/blob/master/docs/readme.md)
+
+See the [consumer startup contract](docs/consumer-integration.md#selecting-bundled-plugins-in-release-builds) for minimal builds, pre-start hooks, persistence and repeatable image checks.

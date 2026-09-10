@@ -224,8 +224,8 @@ _boot_race_guard_impl() {
     chown clusterio:clusterio "$GUARD_CTL_CONFIG" 2>/dev/null || true
     chmod 600 "$GUARD_CTL_CONFIG" 2>/dev/null || true
     guard_log "control config present (rewritten controller_url -> $GUARD_CONTROLLER_URL) — waiting for controller to report this host connected"
-    until ctl_ro host list | awk -F'|' -v n="$HOST_NAME" \
-        'function t(s){gsub(/^ +| +$/,"",s);return s} NR>2 && t($2)==n && t($4)=="true"{ok=1} END{exit !ok}'; do
+    until ctl_ro host list | awk -F'|' -v hid="$HOST_ID" \
+        'function t(s){gsub(/^ +| +$/,"",s);return s} NR>2 && t($3)==hid && t($4)=="true"{ok=1} END{exit !ok}'; do
         if [ "$SECONDS" -ge "$deadline" ]; then
             guard_log "host never reported connected within the deadline — skipping"
             return 0
@@ -275,7 +275,7 @@ get_token() {
 
 # Check if already configured (config file exists with token)
 if [ -f "$CONFIG_PATH" ]; then
-    EXISTING_TOKEN=$(gosu clusterio npx clusteriohost --log-level error config get host.controller_token --config "$CONFIG_PATH" 2>/dev/null || echo "")
+    EXISTING_TOKEN=$(gosu clusterio npx clusteriohost --log-level error config show host.controller_token --config "$CONFIG_PATH")
     if [ -n "$EXISTING_TOKEN" ] && [ "$EXISTING_TOKEN" != "null" ]; then
         # Sanity check: a valid JWT has exactly 2 dots (three base64 segments).
         # A malformed token causes fatal auth failure — reconfigure if invalid.
@@ -297,12 +297,13 @@ if [ -f "$CONFIG_PATH" ]; then
 
         # If config still exists (no desync), check factorio_directory is up to date
         if [ -f "$CONFIG_PATH" ]; then
-            CURRENT_FACTORIO_DIR=$(gosu clusterio npx clusteriohost --log-level error config get host.factorio_directory --config "$CONFIG_PATH" 2>/dev/null || echo "")
+            CURRENT_FACTORIO_DIR=$(gosu clusterio npx clusteriohost --log-level error config show host.factorio_directory --config "$CONFIG_PATH")
             if [ -n "$CURRENT_FACTORIO_DIR" ] && [ "$CURRENT_FACTORIO_DIR" != "$FACTORIO_DIR" ]; then
                 echo "Updating factorio_directory: $CURRENT_FACTORIO_DIR → $FACTORIO_DIR"
                 gosu clusterio npx clusteriohost --log-level error config set host.factorio_directory "$FACTORIO_DIR" --config "$CONFIG_PATH"
             fi
             echo "Host already configured, starting..."
+            /scripts/run-pre-start.sh host "$CONFIG_PATH"
             boot_race_guard &
             exec gosu clusterio npx clusteriohost run --config "$CONFIG_PATH"
         fi
@@ -342,5 +343,6 @@ gosu clusterio npx clusteriohost --log-level error config set host.instances_dir
 gosu clusterio npx clusteriohost --log-level error config set host.factorio_port_range "$FACTORIO_PORT_RANGE" --config "$CONFIG_PATH"
 
 # Start the host
+/scripts/run-pre-start.sh host "$CONFIG_PATH"
 boot_race_guard &
 exec gosu clusterio npx clusteriohost run --config "$CONFIG_PATH"

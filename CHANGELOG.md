@@ -11,6 +11,18 @@ change notice: container → sha → this file.
 Format: `## YYYY-MM-DD` heading + short bullets. Always state the Clusterio /
 Factorio versions when they change.
 
+## 2026-09-10
+
+- Host restart reads use the supported native CLI and report failures instead of
+  treating them as missing configuration. Readiness matches host ID, so a saved
+  display name differing from HOST_NAME does not block health.
+- Add pre-start hooks after local configuration/bootstrap, running as clusterio
+  on every boot. Hook failures stop startup.
+- Release builds can select all, none or a subset of bundled plugins. Existing
+  defaults and version pins are unchanged.
+- Add offline native CLI checks and disposable packaged-consumer startup,
+  recreation, persistent-store and failing-hook acceptance before image publication.
+
 ## 2026-09-06
 
 - Mod seeding now adds only the highest numeric version of each exact mod name to

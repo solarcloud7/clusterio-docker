@@ -54,6 +54,9 @@ services:
       - "8080:8080"
     volumes:
       - controller-data:/clusterio/data
+      - controller-mods:/clusterio/mods
+      - controller-static:/clusterio/static
+      - controller-logs:/clusterio/logs
       - shared-tokens:/clusterio/tokens
       - ./seed-data:/clusterio/seed-data:ro
       # External plugins — MUST be read-write (npm install runs inside):
@@ -85,6 +88,9 @@ services:
 
 volumes:
   controller-data:
+  controller-mods:
+  controller-static:
+  controller-logs:
   host-1-data:
   shared-tokens:
   factorio-client:
@@ -164,3 +170,78 @@ seed-data/
 | External plugins mount must be **read-write** | `npm install` runs inside each plugin directory |
 | `factorio-client` volume should be `external: true` | Preserves ~450 MB download across `docker compose down -v` |
 | Game port ranges auto-derive from host ID | Host N → ports `34N00-34N99` |
+
+## Selecting bundled plugins in release builds
+
+Both Dockerfiles accept `CLUSTERIO_PLUGINS`: `all` (the unchanged default), `none`,
+or a comma-separated selection of `global_chat,inventory_sync,player_auth,research_sync,statistics_exporter,subspace_storage`.
+
+```sh
+docker build -f Dockerfile.controller --build-arg CLUSTERIO_PLUGINS=none -t my-controller .
+docker build -f Dockerfile.host --build-arg CLUSTERIO_PLUGINS=none -t my-host .
+```
+
+The development Compose overlay forwards the same variable. This applies only to
+`CLUSTERIO_TARGET=release`; custom builds use their source tree's plugins. It is a
+build input, not a runtime environment switch. Published defaults remain unchanged.
+
+Clusterio discovers installed plugin packages automatically. A smaller plugin-list
+does not disable installed bundled plugins. Install your packaged plugins with
+normal npm in a derived image and verify the discovered set before starting saves.
+
+## Configuring before startup
+
+Mount a directory read-only at `/etc/clusterio/pre-start.d`, or COPY scripts there.
+Files ending in `.sh` run through Bash in C-locale filename order as `clusterio`.
+They run on every boot after native configuration/bootstrap, before the server starts.
+Existing-host fast startup uses the same hook. Nonzero exit stops startup.
+
+Scripts receive `CLUSTERIO_ROLE` and `CLUSTERIO_CONFIG_PATH`. Make them idempotent.
+Only install trusted scripts: they can access the runtime user's configuration and
+secrets. They cannot repair root-owned files or install OS packages.
+
+Example `10-local-settings.sh`:
+
+```sh
+set -eu
+/clusterio/node_modules/.bin/clusterio"$CLUSTERIO_ROLE" --log-level error --config "$CLUSTERIO_CONFIG_PATH" config set "$CLUSTERIO_ROLE.allow_remote_updates" false
+```
+
+Local `config show FIELD` returns a scalar; strings are raw, not JSON-quoted.
+Use remote `clusterioctl host config set ...` on a running host. Local writes are
+locked while it runs; some local-only fields require a pre-start hook instead.
+
+## Persistent state and consumer checks
+
+With default paths, preserve controller `/clusterio/data` (configuration/database),
+`/clusterio/mods` (archives), `/clusterio/static` (exported assets), and
+`/clusterio/tokens` together. Retain `/clusterio/logs` for log history.
+Each host needs its own `/clusterio/data` (configuration, instances and saves).
+Host `/clusterio/mods` is a downloadable cache; persist `/opt/factorio` or the
+licensed client volume to avoid downloading installations again. Include any
+additional storage paths configured by plugins in backups.
+
+Before adding mounts to an existing installation, stop it and copy its current
+directories into the new volumes. An empty mount hides existing container files.
+The example above is for fresh installation, not a backup/restore certification.
+
+Offline native CLI smoke, run as the runtime user:
+
+```sh
+docker run --rm --network none --user clusterio --entrypoint node my-controller /scripts/verify-cli.cjs controller
+```
+
+For disposable packaged-consumer acceptance, build both images with
+`CLUSTERIO_PLUGINS=none`, then run from the canonical repository:
+
+```sh
+node tests/consumer-smoke.mjs my-controller my-host
+```
+
+This installs a real fixture tarball, boots fresh labelled volumes, checks hooks and
+permissions, recreates containers, checks retained state and a served static asset,
+and verifies that a failed hook prevents startup. No game world or client download
+is needed. PR CI runs it before image publication. Reports and bounded logs are in
+`ci-artifacts/cd-smoke-*/`; cleanup checks owned containers, volumes and network.
+Local images remain for inspection. Existing seeded integration still tests instance
+startup; this test does not establish transfer, upgrade or disaster recovery safety.

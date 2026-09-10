@@ -50,3 +50,5 @@ Thumbs.db
 
 # Clusterio source (uncomment to exclude from build context when using release target)
 # clusterio/
+
+ci-artifacts/

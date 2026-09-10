@@ -63,6 +63,9 @@ jobs:
       - name: Seed ordering — no config push after assign
         run: bash tests/seed-instances-order.test.sh
 
+      - name: Bundled plugin selection
+        run: node --test tests/install-release.test.cjs
+
       - name: Seed mods — highest numeric version per name
         run: bash tests/seed-mod-versions.test.sh
 
@@ -109,7 +112,7 @@ jobs:
   # own images from the same source, so it never consumed this job's output and
   # nothing is serialised that previously ran concurrently except the push itself.
   build:
-    needs: [gates, test]
+    needs: [gates, test, consumer-smoke]
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -609,3 +612,27 @@ jobs:
       - name: Cleanup
         if: always()
         run: docker compose down -v
+
+  consumer-smoke:
+    needs: gates
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+      - name: Build minimal release images
+        run: |
+          docker build -f Dockerfile.controller --build-arg CLUSTERIO_PLUGINS=none -t clusterio-smoke-controller .
+          docker build -f Dockerfile.host --build-arg CLUSTERIO_PLUGINS=none -t clusterio-smoke-host .
+      - name: Native consumer startup and recreation
+        run: node tests/consumer-smoke.mjs clusterio-smoke-controller clusterio-smoke-host
+      - name: Retain smoke evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: consumer-smoke
+          path: ci-artifacts/
