@@ -164,7 +164,7 @@ CONTROL_CONFIG="${CONTROL_CONFIG:-$TOKENS_DIR/config-control.json}"
 # second root cause). The guard derives a host-reachable copy using the same
 # CONTROLLER_URL this entrypoint configures clusteriohost with.
 GUARD_CTL_CONFIG="$DATA_DIR/.guard-control.json"
-GUARD_CONTROLLER_URL="${CONTROLLER_URL:-http://clusterio-controller:${CONTROLLER_HTTP_PORT:-8080}/}"
+# Read GUARD_CONTROLLER_URL from native configuration after hooks.
 GUARD_LOG="$DATA_DIR/boot-race-guard.log"
 
 ctl_ro() {
@@ -225,7 +225,7 @@ _boot_race_guard_impl() {
     chmod 600 "$GUARD_CTL_CONFIG" 2>/dev/null || true
     guard_log "control config present (rewritten controller_url -> $GUARD_CONTROLLER_URL) — waiting for controller to report this host connected"
     until ctl_ro host list | awk -F'|' -v hid="$HOST_ID" \
-        'function t(s){gsub(/^ +| +$/,"",s);return s} NR>2 && t($3)==hid && t($4)=="true"{ok=1} END{exit !ok}'; do
+        'function t(s){gsub(/^ +| +$/,"",s);return s} NR>2 && t($3)~/^[0-9]+$/ && (t($3)+0)==(hid+0) && t($4)=="true"{ok=1} END{exit !ok}'; do
         if [ "$SECONDS" -ge "$deadline" ]; then
             guard_log "host never reported connected within the deadline — skipping"
             return 0
@@ -238,7 +238,7 @@ _boot_race_guard_impl() {
     touch /run/clusterio-connected 2>/dev/null || true
     guard_log "handshake confirmed at $T — checking for instances started before it"
     ctl_ro instance list | awk -F'|' -v hid="$HOST_ID" -v T="$T" \
-        'function t(s){gsub(/^ +| +$/,"",s);return s} NR>2 && t($3)==hid && (t($5)=="running"||t($5)=="starting") && t($7)+0>0 && t($7)+0<T {print t($1)}' \
+        'function t(s){gsub(/^ +| +$/,"",s);return s} NR>2 && t($3)~/^[0-9]+$/ && (t($3)+0)==(hid+0) && (t($5)=="running"||t($5)=="starting") && t($7)+0>0 && t($7)+0<T {print t($1)}' \
     | while IFS= read -r inst; do
         guard_log "'$inst' started before the handshake — restarting it so plugins register"
         ctl_ro instance stop "$inst" || true
@@ -273,76 +273,26 @@ get_token() {
     return 1
 }
 
-# Check if already configured (config file exists with token)
-if [ -f "$CONFIG_PATH" ]; then
-    EXISTING_TOKEN=$(gosu clusterio npx clusteriohost --log-level error config show host.controller_token --config "$CONFIG_PATH")
-    if [ -n "$EXISTING_TOKEN" ] && [ "$EXISTING_TOKEN" != "null" ]; then
-        # Sanity check: a valid JWT has exactly 2 dots (three base64 segments).
-        # A malformed token causes fatal auth failure — reconfigure if invalid.
-        TOKEN_DOTS=$(echo "$EXISTING_TOKEN" | tr -cd '.' | wc -c)
-        if [ "$TOKEN_DOTS" -ne 2 ]; then
-            echo "Stored token is malformed (not a valid JWT) — reconfiguring host..."
-            rm -f "$CONFIG_PATH"
+# Wait only for first-boot credentials. Existing configuration is reconciled,
+# never deleted when credentials rotate or a native command fails.
+if [ ! -f "$CONFIG_PATH" ]; then
+    echo "Waiting for host token..."
+    WAITED=0
+    while ! get_token >/dev/null; do
+        if [ "$WAITED" -ge "$MAX_WAIT_SECONDS" ]; then
+            echo "ERROR: Timed out waiting for host token after ${MAX_WAIT_SECONDS}s" >&2
+            exit 1
         fi
-
-        # Token desync detection: if the shared token volume has a different token
-        # (e.g. controller volume was wiped and regenerated), reconfigure the host
-        if [ -f "$CONFIG_PATH" ] && [ -f "$TOKEN_FILE" ]; then
-            NEW_TOKEN=$(cat "$TOKEN_FILE")
-            if [ "$EXISTING_TOKEN" != "$NEW_TOKEN" ]; then
-                echo "Token mismatch detected (controller may have been re-initialized) — reconfiguring host..."
-                rm -f "$CONFIG_PATH"
-            fi
-        fi
-
-        # If config still exists (no desync), check factorio_directory is up to date
-        if [ -f "$CONFIG_PATH" ]; then
-            CURRENT_FACTORIO_DIR=$(gosu clusterio npx clusteriohost --log-level error config show host.factorio_directory --config "$CONFIG_PATH")
-            if [ -n "$CURRENT_FACTORIO_DIR" ] && [ "$CURRENT_FACTORIO_DIR" != "$FACTORIO_DIR" ]; then
-                echo "Updating factorio_directory: $CURRENT_FACTORIO_DIR → $FACTORIO_DIR"
-                gosu clusterio npx clusteriohost --log-level error config set host.factorio_directory "$FACTORIO_DIR" --config "$CONFIG_PATH"
-            fi
-            echo "Host already configured, starting..."
-            /scripts/run-pre-start.sh host "$CONFIG_PATH"
-            boot_race_guard &
-            exec gosu clusterio npx clusteriohost run --config "$CONFIG_PATH"
-        fi
-    fi
+        sleep "$WAIT_INTERVAL"
+        WAITED=$((WAITED + WAIT_INTERVAL))
+    done
 fi
+gosu clusterio node /scripts/configure-host.cjs reconcile "$CONFIG_PATH" "$FACTORIO_DIR" "$HOST_NAME" "$TOKEN_FILE"
 
-# Wait for token to become available
-echo "Waiting for host token..."
-WAITED=0
-while ! TOKEN=$(get_token); do
-    if [ $WAITED -ge $MAX_WAIT_SECONDS ]; then
-        echo "ERROR: Timed out waiting for host token after ${MAX_WAIT_SECONDS}s"
-        echo "Either set CLUSTERIO_HOST_TOKEN environment variable or ensure shared volume is mounted"
-        exit 1
-    fi
-    echo "Token not available yet, waiting... (${WAITED}s/${MAX_WAIT_SECONDS}s)"
-    sleep $WAIT_INTERVAL
-    WAITED=$((WAITED + WAIT_INTERVAL))
-done
-
-echo "Configuring host (ID: $HOST_ID, Name: $HOST_NAME)..."
-
-# Derive game port range from HOST_ID so each host uses non-overlapping ports.
-# Pattern: host N → 34N00 – 34N99 (e.g., host 1 → 34100-34199, host 2 → 34200-34299)
-# Override with FACTORIO_PORT_RANGE env var if needed.
-DEFAULT_PORT_START=$((34000 + HOST_ID * 100))
-DEFAULT_PORT_END=$((DEFAULT_PORT_START + 99))
-FACTORIO_PORT_RANGE="${FACTORIO_PORT_RANGE:-${DEFAULT_PORT_START}-${DEFAULT_PORT_END}}"
-
-# Configure host with paths relative to data volume
-gosu clusterio npx clusteriohost --log-level error config set host.id "$HOST_ID" --config "$CONFIG_PATH"
-gosu clusterio npx clusteriohost --log-level error config set host.name "$HOST_NAME" --config "$CONFIG_PATH"
-gosu clusterio npx clusteriohost --log-level error config set host.controller_url "${CONTROLLER_URL:-http://clusterio-controller:${CONTROLLER_HTTP_PORT:-8080}/}" --config "$CONFIG_PATH"
-gosu clusterio npx clusteriohost --log-level error config set host.controller_token "$TOKEN" --config "$CONFIG_PATH"
-gosu clusterio npx clusteriohost --log-level error config set host.factorio_directory "$FACTORIO_DIR" --config "$CONFIG_PATH"
-gosu clusterio npx clusteriohost --log-level error config set host.instances_directory "$DATA_DIR/instances" --config "$CONFIG_PATH"
-gosu clusterio npx clusteriohost --log-level error config set host.factorio_port_range "$FACTORIO_PORT_RANGE" --config "$CONFIG_PATH"
-
-# Start the host
 /scripts/run-pre-start.sh host "$CONFIG_PATH"
+# Hooks may change identity or endpoint. Observe what the host will actually use.
+EFFECTIVE_CONFIG=$(gosu clusterio node /scripts/configure-host.cjs effective "$CONFIG_PATH")
+HOST_ID=${EFFECTIVE_CONFIG%%$'\n'*}
+GUARD_CONTROLLER_URL=${EFFECTIVE_CONFIG#*$'\n'}
 boot_race_guard &
 exec gosu clusterio npx clusteriohost run --config "$CONFIG_PATH"

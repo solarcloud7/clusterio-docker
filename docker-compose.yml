@@ -49,6 +49,10 @@ services:
       - "${CONTROLLER_HTTP_PORT:-8080}:${CONTROLLER_HTTP_PORT:-8080}"
     volumes:
       - controller-data:/clusterio/data
+      # Existing installs: migrate these directories before recreating (docs/consumer-integration.md).
+      - controller-mods:/clusterio/mods
+      - controller-static:/clusterio/static
+      - controller-logs:/clusterio/logs
       - shared-tokens:/clusterio/tokens
       - ./seed-data:/clusterio/seed-data:ro         # Seed instances on first run
       # - ./plugins:/clusterio/external_plugins  # Uncomment for external plugins
@@ -83,6 +87,7 @@ services:
       - "${HOST1_PORTS:-34100-34109}:34100-34109/udp"
     volumes:
       - host-1-data:/clusterio/data
+      - host-1-logs:/clusterio/logs
       - factorio-client:/opt/factorio-client
       - shared-tokens:/clusterio/tokens:ro
       - ./seed-data/mods:/clusterio/seed-mods:ro
@@ -101,6 +106,7 @@ services:
       - "${HOST2_PORTS:-34200-34209}:34200-34209/udp"
     volumes:
       - host-2-data:/clusterio/data
+      - host-2-logs:/clusterio/logs
       - shared-tokens:/clusterio/tokens:ro
       - ./seed-data/mods:/clusterio/seed-mods:ro
 
@@ -127,7 +133,12 @@ networks:
     driver: bridge
 
 volumes:
-  controller-data:    # All controller persistent data
+  controller-data:    # Controller configuration and database
+  controller-mods:
+  controller-static:
+  controller-logs:
+  host-1-logs:
+  host-2-logs:
   host-1-data:        # Host 1 persistent data (config, instances, logs)
   host-2-data:        # Host 2 persistent data
   prometheus-data:    # Prometheus metrics storage

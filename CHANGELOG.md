@@ -13,6 +13,15 @@ Factorio versions when they change.
 
 ## 2026-09-10
 
+- Reconcile explicit host token, controller URL and port overrides without deleting
+  saved configuration. Preserve saved identity; read readiness identity/address after hooks.
+  Native configuration writes are verified together with one final read.
+- Persist controller mods, exported assets and logs in Compose; existing deployments
+  must migrate container directories before recreating. No automatic migration is performed.
+- Extend native acceptance with restart/configuration conflicts and prior-image state,
+  selected plugins, shared-dependency checks and bounded diagnostics. Publication tests
+  its loaded release/custom candidates and pushes those same images without rebuilding.
+
 - Host restart reads use the supported native CLI and report failures instead of
   treating them as missing configuration. Readiness matches host ID, so a saved
   display name differing from HOST_NAME does not block health.

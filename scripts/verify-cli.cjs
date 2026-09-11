@@ -5,7 +5,10 @@ const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
 assert.notEqual(process.getuid(), 0, "Run CLI verification as clusterio");
-const role = process.argv[2];
+const [role, expectedJson, ...extra] = process.argv.slice(2);
+assert.equal(extra.length, 0, "verify-cli.cjs ROLE [EXPECTED_PLUGINS_JSON]");
+const expected = expectedJson === undefined ? null : JSON.parse(expectedJson);
+assert.ok(expected === null || (Array.isArray(expected) && expected.every(n => typeof n === "string") && new Set(expected).size === expected.length));
 assert.ok(["host", "controller"].includes(role));
 const dir = fs.mkdtempSync(path.join(os.tmpdir(), "clusterio-cli-"));
 try {
@@ -27,9 +30,10 @@ try {
   }
   fs.writeFileSync(path.join(dir, "plugins.json"), "[]");
   run("plugin", "list");
-  const found = JSON.parse(fs.readFileSync(path.join(dir, "plugins.json"))).map(([name]) => name).sort();
-  const pkg = JSON.parse(fs.readFileSync("/clusterio/package.json"));
-  const expected = Object.keys(pkg.dependencies || {}).filter(n => n.startsWith("@clusterio/plugin-")).map(n => n.slice("@clusterio/plugin-".length)).sort();
-  assert.deepEqual(found, expected, "Native discovery must match bundled selection");
-  console.log(JSON.stringify({role, version: require("node:module").createRequire("/clusterio/package.json")("@clusterio/" + role + "/package.json").version, plugins: found}));
+  const entries = JSON.parse(fs.readFileSync(path.join(dir, "plugins.json")));
+  const found = entries.map(([name]) => name).sort();
+  require("./check-plugin-resolution.cjs").verifyPlugins(entries);
+  if (expected !== null) assert.deepEqual(found, [...expected].sort(), "Native discovery must match explicit expected plugins");
+  console.log(JSON.stringify({role, version: require("node:module").createRequire("/clusterio/package.json")("@clusterio/" + role + "/package.json").version,
+    plugins: found, expectedPlugins: expected, selectionVerified: expected !== null, sharedDependenciesVerified: true}));
 } finally { fs.rmSync(dir, {recursive: true, force: true}); }

@@ -64,7 +64,7 @@ jobs:
         run: bash tests/seed-instances-order.test.sh
 
       - name: Bundled plugin selection
-        run: node --test tests/install-release.test.cjs
+        run: node --test tests/*.test.cjs
 
       - name: Seed mods — highest numeric version per name
         run: bash tests/seed-mod-versions.test.sh
@@ -106,14 +106,16 @@ jobs:
             *) echo "::error::Git tag '$T' must be '<CLUSTERIO_VERSION>.r<N>' with CLUSTERIO_VERSION=$V (from Dockerfile.host). Bump the Dockerfiles or fix the tag."; exit 1;;
           esac
 
-  # Builds and PUBLISHES. `needs: test` is the point: the push used to happen in
+  # Builds and PUBLISHES. All acceptance gates must pass first.
+  # Previously, the push ran in
   # parallel with (in practice, before) the integration suite, so a red test run
   # still moved :latest — that happened for real on 2026-07-23. `test` builds its
-  # own images from the same source, so it never consumed this job's output and
-  # nothing is serialised that previously ran concurrently except the push itself.
+  # own images from the same source. This job also checks its selected release/custom
+  # candidate and pushes those loaded images without a second build.
   build:
     needs: [gates, test, consumer-smoke]
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     permissions:
       contents: read
       packages: write
@@ -214,12 +216,13 @@ jobs:
             org.opencontainers.image.description=Clusterio host with Factorio headless server
             io.clusterio.version=${{ steps.clusterio_version.outputs.version }}
 
-      - name: Build and push Controller image
+      - name: Build Controller candidate
         uses: docker/build-push-action@v7
         with:
           context: .
           file: ./Dockerfile.controller
-          push: ${{ github.event_name != 'pull_request' }}
+          push: false
+          load: true
           tags: ${{ steps.meta-controller.outputs.tags }}
           labels: ${{ steps.meta-controller.outputs.labels }}
           build-args: |
@@ -230,12 +233,13 @@ jobs:
           cache-from: type=gha,scope=controller
           cache-to: type=gha,mode=max,scope=controller
 
-      - name: Build and push Host image
+      - name: Build Host candidate
         uses: docker/build-push-action@v7
         with:
           context: .
           file: ./Dockerfile.host
-          push: ${{ github.event_name != 'pull_request' }}
+          push: false
+          load: true
           tags: ${{ steps.meta-host.outputs.tags }}
           labels: ${{ steps.meta-host.outputs.labels }}
           build-args: |
@@ -243,6 +247,40 @@ jobs:
             BUILD_REVISION=${{ github.sha }}
           cache-from: type=gha,scope=host
           cache-to: type=gha,mode=max,scope=host
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+      - name: Load previous release for configuration upgrade acceptance
+        run: docker pull ghcr.io/solarcloud7/clusterio-docker-host@sha256:98a66d7b39359408ebbb255ff44814b2920ab0fa30596a8a71a872b40df2e232
+      - name: Accept the exact images selected for publication
+        env:
+          CONTROLLER_CANDIDATE: ${{ fromJSON(steps.meta-controller.outputs.json).tags[0] }}
+          HOST_CANDIDATE: ${{ fromJSON(steps.meta-host.outputs.json).tags[0] }}
+        run: |
+          node tests/consumer-smoke.mjs "$CONTROLLER_CANDIDATE" "$HOST_CANDIDATE" \
+            --plugins global_chat,inventory_sync,player_auth,research_sync,statistics_exporter,subspace_storage \
+            --skip-package --previous-host ghcr.io/solarcloud7/clusterio-docker-host@sha256:98a66d7b39359408ebbb255ff44814b2920ab0fa30596a8a71a872b40df2e232
+      - name: Retain candidate acceptance evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: publication-candidate-acceptance
+          path: ci-artifacts/
+      - name: Push accepted images without rebuilding
+        if: github.event_name != 'pull_request'
+        env:
+          CONTROLLER_METADATA: ${{ steps.meta-controller.outputs.json }}
+          HOST_METADATA: ${{ steps.meta-host.outputs.json }}
+        run: |
+          node <<'NODE'
+          const {execFileSync}=require("node:child_process");
+          for (const key of ["CONTROLLER_METADATA","HOST_METADATA"]) {
+            for (const tag of JSON.parse(process.env[key]).tags) {
+              execFileSync("docker",["push",tag],{stdio:"inherit"});
+            }
+          }
+          NODE
 
       - name: Publish change notice to run summary
         if: github.event_name == 'push'
@@ -613,10 +651,15 @@ jobs:
         if: always()
         run: docker compose down -v
 
+  # Supplemental release selections. The publish job separately tests its exact target.
   consumer-smoke:
     needs: gates
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        plugins: [none, global_chat]
     permissions:
       contents: read
     steps:
@@ -624,15 +667,38 @@ jobs:
       - uses: actions/setup-node@v6
         with:
           node-version: 24
-      - name: Build minimal release images
-        run: |
-          docker build -f Dockerfile.controller --build-arg CLUSTERIO_PLUGINS=none -t clusterio-smoke-controller .
-          docker build -f Dockerfile.host --build-arg CLUSTERIO_PLUGINS=none -t clusterio-smoke-host .
+      - uses: docker/setup-buildx-action@v4
+      - name: Build consumer controller
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: Dockerfile.controller
+          load: true
+          tags: clusterio-smoke-controller
+          build-args: |
+            CLUSTERIO_PLUGINS=${{ matrix.plugins }}
+            BUILD_REVISION=${{ github.sha }}
+          cache-from: type=gha,scope=consumer-controller-${{ matrix.plugins }}
+          cache-to: type=gha,mode=max,scope=consumer-controller-${{ matrix.plugins }}
+      - name: Build consumer host
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: Dockerfile.host
+          load: true
+          tags: clusterio-smoke-host
+          build-args: |
+            CLUSTERIO_PLUGINS=${{ matrix.plugins }}
+            BUILD_REVISION=${{ github.sha }}
+          cache-from: type=gha,scope=consumer-host-${{ matrix.plugins }}
+          cache-to: type=gha,mode=max,scope=consumer-host-${{ matrix.plugins }}
       - name: Native consumer startup and recreation
-        run: node tests/consumer-smoke.mjs clusterio-smoke-controller clusterio-smoke-host
+        env:
+          PLUGINS: ${{ matrix.plugins }}
+        run: node tests/consumer-smoke.mjs clusterio-smoke-controller clusterio-smoke-host --plugins "$PLUGINS"
       - name: Retain smoke evidence
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: consumer-smoke
+          name: consumer-smoke-${{ matrix.plugins }}
           path: ci-artifacts/

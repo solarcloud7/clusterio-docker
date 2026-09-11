@@ -137,7 +137,7 @@ Error: permission surface_export.ui.view does not exist
 
 **The latest images fix this automatically** — `install-plugins.sh` removes `node_modules/@clusterio` after install, forcing Node.js to resolve upward to the shared monorepo copies.
 
-If you hit this on an older image, manually remove `@clusterio` from the plugin's `package-lock.json` or delete `node_modules/@clusterio/` from the plugin directory.
+That legacy directory-mount cleanup does not prove version compatibility. For packaged derived images, use compatible peer dependencies and the offline verification below; it detects duplicate resolution without deleting packages.
 
 ## Seed Data
 
@@ -189,16 +189,41 @@ Clusterio discovers installed plugin packages automatically. A smaller plugin-li
 does not disable installed bundled plugins. Install your packaged plugins with
 normal npm in a derived image and verify the discovered set before starting saves.
 
+## Host configuration precedence
+
+The host reconciles configuration before running pre-start hooks:
+
+| Setting | Fresh volume | Existing volume |
+|---|---|---|
+| Host ID and name | Derived from HOST_NAME; numeric suffixes are decimal | Saved identity is preserved, even if the container name changes |
+| Controller token | Explicit nonempty CLUSTERIO_HOST_TOKEN, then token file | Explicit token, then token file, then saved token |
+| Controller URL | Explicit CONTROLLER_URL, otherwise default endpoint | Explicit CONTROLLER_URL replaces it; omission preserves the saved URL |
+| Game port range | Explicit FACTORIO_PORT_RANGE, otherwise derived from host ID | Explicit range replaces it; omission preserves the saved range |
+| Instances directory | data/instances | Saved path is preserved |
+| Factorio directory | Detected client/headless installation | Reconciled to the detected installation |
+
+Empty optional token, URL and port variables are treated as unset, as in earlier images.
+Default CONTROLLER_HTTP_PORT
+only contributes to a fresh host's fallback URL; use CONTROLLER_URL to change an existing
+host's endpoint. Token filenames still follow HOST_NAME. Changing an existing host's
+identity is a deliberate operation: update its ID and matching credential together in a hook.
+
+Credential rotation updates the token field without deleting the configuration. Unreadable
+configuration stops startup and remains available for diagnosis. Native writes are checked
+with one configuration read after all writes, since the pinned CLI can log a rejected value
+and return zero. This verification checks accepted values, not connectivity. Writes are
+individual native operations, not an atomic transaction.
+
 ## Configuring before startup
 
 Mount a directory read-only at `/etc/clusterio/pre-start.d`, or COPY scripts there.
 Files ending in `.sh` run through Bash in C-locale filename order as `clusterio`.
-They run on every boot after native configuration/bootstrap, before the server starts.
-Existing-host fast startup uses the same hook. Nonzero exit stops startup.
+They run on every boot after native configuration/bootstrap and before server startup.
+Hooks are the final configuration authority. The readiness guard reads the effective ID
+and URL afterward. A nonzero hook exit stops startup.
 
 Scripts receive `CLUSTERIO_ROLE` and `CLUSTERIO_CONFIG_PATH`. Make them idempotent.
-Only install trusted scripts: they can access the runtime user's configuration and
-secrets. They cannot repair root-owned files or install OS packages.
+They have access to the runtime user's configuration and secrets.
 
 Example `10-local-settings.sh`:
 
@@ -211,37 +236,42 @@ Local `config show FIELD` returns a scalar; strings are raw, not JSON-quoted.
 Use remote `clusterioctl host config set ...` on a running host. Local writes are
 locked while it runs; some local-only fields require a pre-start hook instead.
 
-## Persistent state and consumer checks
+## Persistent state and migration
 
-With default paths, preserve controller `/clusterio/data` (configuration/database),
-`/clusterio/mods` (archives), `/clusterio/static` (exported assets), and
-`/clusterio/tokens` together. Retain `/clusterio/logs` for log history.
-Each host needs its own `/clusterio/data` (configuration, instances and saves).
-Host `/clusterio/mods` is a downloadable cache; persist `/opt/factorio` or the
-licensed client volume to avoid downloading installations again. Include any
-additional storage paths configured by plugins in backups.
+The base Compose file now mounts controller `/clusterio/data`, `/clusterio/mods`,
+`/clusterio/static`, `/clusterio/tokens` and `/clusterio/logs`, plus each host's
+data and logs. Host mods are a downloadable cache. Preserve the Factorio installation
+volume to avoid downloading it again. Include configured plugin storage in backups.
 
-Before adding mounts to an existing installation, stop it and copy its current
-directories into the new volumes. An empty mount hides existing container files.
-The example above is for fresh installation, not a backup/restore certification.
+**Existing installations must migrate before recreating containers.** Empty volumes hide
+the old container directories; a container's writable layer is not persistent storage.
 
-Offline native CLI smoke, run as the runtime user:
+1. Stop the existing containers without removing them (`docker compose stop`, not `down`).
+2. Copy controller mods, static assets and logs, and host logs to a separate backup with
+   `docker cp CONTAINER:/clusterio/DIRECTORY ./BACKUP`. Record each directory's file list
+   and sizes; keep the original stopped containers until the copy is verified.
+3. Populate the corresponding new project-scoped volumes from that backup. Confirm
+   ownership allows the image's `clusterio` user to read/write them.
+4. Verify the copy before recreating containers with the new Compose file. Check mods,
+   served assets and logs after startup; retain backups until acceptance is complete.
+
+The PR does not perform this migration on a running installation.
+
+## Consumer verification
+
+Verify native commands and shared plugin dependency resolution offline:
 
 ```sh
-docker run --rm --network none --user clusterio --entrypoint node my-controller /scripts/verify-cli.cjs controller
+docker run --rm --network none --user clusterio --entrypoint node my-controller /scripts/verify-cli.cjs controller '["ci_fixture"]'
 ```
 
-For disposable packaged-consumer acceptance, build both images with
-`CLUSTERIO_PLUGINS=none`, then run from the canonical repository:
+Supply the exact expected discovered plugin array for your image. Without that argument,
+the command reports discovered plugins and checks their shared dependencies, but does not
+claim that a particular selection was tested. It supports release packages, derived images,
+and custom source layouts. Incompatible peer requirements or duplicate lib/web_ui resolution
+fail verification; update compatible dependencies instead of deleting arbitrary packages.
 
-```sh
-node tests/consumer-smoke.mjs my-controller my-host
-```
-
-This installs a real fixture tarball, boots fresh labelled volumes, checks hooks and
-permissions, recreates containers, checks retained state and a served static asset,
-and verifies that a failed hook prevents startup. No game world or client download
-is needed. PR CI runs it before image publication. Reports and bounded logs are in
-`ci-artifacts/cd-smoke-*/`; cleanup checks owned containers, volumes and network.
-Local images remain for inspection. Existing seeded integration still tests instance
-startup; this test does not establish transfer, upgrade or disaster recovery safety.
+For real startup, recreation and configuration-conflict checks, use the commands and
+scenario matrix in [tests/README.md](../tests/README.md). The runner records image identities,
+individual results, unverified cases and cleanup. Minimal and selected release combinations
+run in CI; publication also accepts its exact full release/custom images before pushing them.

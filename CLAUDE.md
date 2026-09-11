@@ -129,10 +129,10 @@ clusterio-docker/
 | Mod upload | ⚠️ Partial | Errors swallowed; controller may reject duplicates |
 | Mod pack membership | ✅ | `--add-mods` is idempotent; already-added mods are unchanged |
 | API seeding block | ✅ | `.seed-complete` marker file |
-| Host configuration | ✅ | Config file existence + token desync detection |
+| Host configuration | ✅ | Saved identity + explicit overrides + native batch readback |
 
 ### Token Desync Detection
-When the controller volume is wiped but host volumes persist, the controller generates new tokens that won't match what hosts have stored. The host entrypoint compares its stored token against the shared token volume — if they differ, it deletes its config and reconfigures from scratch.
+When the controller volume is wiped but host volumes persist, the controller generates new tokens that won't match what hosts have stored. The host entrypoint compares its stored token against the shared token volume — if they differ, it updates the credential without deleting unrelated configuration. Explicit CLUSTERIO_HOST_TOKEN takes precedence over the mounted token. See the host configuration contract in docs/consumer-integration.md.
 
 ### Hostname Conventions
 - Host names **must** follow `clusterio-host-N` pattern for automatic token loading
@@ -171,6 +171,7 @@ When the controller volume is wiped but host volumes persist, the controller gen
 | Argument | Default | Description |
 |----------|---------|-------------|
 | `CLUSTERIO_TARGET` | `release` | Build target: `release` (npm registry) or `custom` (local source in `clusterio/`) |
+| `CLUSTERIO_PLUGINS` | `all` | Release-only bundled selection: all, none, or comma-separated names. Custom builds use their source plugins. |
 | `CLUSTERIO_VERSION` | `2.0.0-alpha.27` | Pinned Clusterio version for the `release` target. All `@clusterio/*` packages install at this exact version. Ignored by the `custom` target. Bump to upgrade. |
 | `NODE_IMAGE` | `node:24-bookworm-slim@sha256:…` | Base Node image, pinned by digest for reproducible builds. Refresh periodically for Debian/Node security patches (see comment in the Dockerfiles). |
 | `BAKE_FACTORIO_HEADLESS` | `false` | Bake the Factorio headless server into the image. **Default `false`** — the public image ships no Factorio (Wube's EULA forbids redistributing it) and Clusterio downloads the target version at runtime. Set `true` only for private/offline images you don't redistribute. |
@@ -187,10 +188,9 @@ Build args are set directly in the `build.args` section of each host service in 
 
 ### Custom Clusterio Build (Fork)
 To use a Clusterio fork instead of the npm-published packages:
-1. Clone the fork: `git clone https://github.com/solarcloud7/clusterio clusterio/`
-2. Remove `clusterio/` from `.dockerignore`
-3. Uncomment `CLUSTERIO_TARGET: custom` in `docker-compose.yml` (in controller + all host services)
-4. Build: `docker compose build`
+Use the existing canonical Clusterio source checkout. Run
+`python tools/build-custom-context.py ../clusterio --build` to create a Docker build archive
+and both local custom images without creating another checkout. See tests/README.md for acceptance.
 
 The custom target uses a multi-stage build: a builder stage runs `pnpm install` (which compiles TypeScript + bundles the web UI), then the built monorepo is copied into the final image. pnpm hoists bins to `node_modules/.bin/` so all `npx clusterio*` commands work unchanged.
 
@@ -199,6 +199,10 @@ The custom target uses a multi-stage build: a builder stage runs `pnpm install` 
 | Mount Point | Purpose | Notes |
 |-------------|---------|-------|
 | `/clusterio/data` | All persistent data (config, DB, instances) | Docker volume recommended |
+| `/clusterio/mods` | Controller mod archives | Persistent controller volume; host copy is a cache |
+| `/clusterio/static` | Exported assets | Persistent controller volume |
+| `/clusterio/logs` | Log history | Separate persistent volume per container |
+| `/etc/clusterio/pre-start.d` | Ordered non-root hooks | Read-only scripts, every boot before server startup |
 | `/clusterio/tokens` | Shared token exchange | Controller: rw, Hosts: ro |
 | `/clusterio/seed-data` | Seed data for first run | Controller only, read-only |
 | `/clusterio/seed-mods` | Mod pre-cache for hosts | Hosts only, read-only |
@@ -208,6 +212,10 @@ The custom target uses a multi-stage build: a builder stage runs `pnpm install` 
 **Critical**: External plugins mount must NOT be `:ro` — the entrypoint runs `npm install` inside each plugin directory.
 
 ## Development Workflow
+
+Follow [AGENTS.md](AGENTS.md) and [container acceptance](tests/README.md) for startup changes.
+`scripts/configure-host.cjs` owns host input reconciliation; `run-pre-start.sh` runs hooks;
+`verify-cli.cjs` checks native behavior and shared plugin dependency resolution.
 
 ### Quick Start
 ```bash
