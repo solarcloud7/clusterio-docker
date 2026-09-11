@@ -114,6 +114,11 @@ docker exec clusterio-controller cat /clusterio/BUILD_INFO
 
 ## Quick Start
 
+Existing deployments adopting this Compose update must copy controller mods, static assets
+and container logs into the new volumes **before recreating containers**. Follow the
+[migration steps](docs/consumer-integration.md#persistent-state-and-migration).
+
+
 ### Using Docker Compose (Recommended)
 
 1. Clone this repository:
@@ -249,8 +254,8 @@ docker run -d -p 34100-34199:34100-34199/udp \
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `CLUSTERIO_HOST_TOKEN` | *(auto from shared volume)* | Host authentication token |
-| `CONTROLLER_URL` | `http://clusterio-controller:8080/` | Controller URL |
+| `CLUSTERIO_HOST_TOKEN` | *(auto from shared volume)* | Explicit token overrides mounted/saved credentials on every boot |
+| `CONTROLLER_URL` | `http://clusterio-controller:8080/` on fresh hosts | Explicit override; omission preserves a saved endpoint |
 | `HOST_NAME` | Container hostname | Host identifier (must match token file name) |
 | `FACTORIO_USERNAME` | *(unset)* | Factorio.com username — triggers runtime game client download on first startup |
 | `FACTORIO_TOKEN` | *(unset)* | Factorio.com token from [factorio.com/profile](https://factorio.com/profile) |
@@ -632,3 +637,5 @@ MIT License - See [LICENSE](LICENSE) for details.
 
 - [Clusterio GitHub](https://github.com/clusterio/clusterio)
 - [Clusterio Documentation](https://github.com/clusterio/clusterio/blob/master/docs/readme.md)
+
+See the [consumer startup contract](docs/consumer-integration.md#selecting-bundled-plugins-in-release-builds) for minimal builds, pre-start hooks, persistence and repeatable image checks.

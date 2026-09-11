@@ -131,6 +131,8 @@ if [ "${CONTROLLER_STATIC_CACHE_MODE:-revalidate}" != "immutable" ]; then
   node /scripts/patches/disable-immutable-cache.js
 fi
 
+/scripts/run-pre-start.sh controller "$CONFIG_PATH"
+
 # Start controller in background
 gosu clusterio npx clusteriocontroller run --config "$CONFIG_PATH" &
 CONTROLLER_PID=$!
