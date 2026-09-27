@@ -295,4 +295,6 @@ EFFECTIVE_CONFIG=$(gosu clusterio node /scripts/configure-host.cjs effective "$C
 HOST_ID=${EFFECTIVE_CONFIG%%$'\n'*}
 GUARD_CONTROLLER_URL=${EFFECTIVE_CONFIG#*$'\n'}
 boot_race_guard &
-exec gosu clusterio npx clusteriohost run --config "$CONFIG_PATH"
+# Run the bin directly, not via npx: npm exec does not forward SIGTERM, so the host
+# (and its Factorio servers) would be killed without stopping and saving instances.
+exec gosu clusterio /clusterio/node_modules/.bin/clusteriohost run --config "$CONFIG_PATH"

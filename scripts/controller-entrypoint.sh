@@ -133,8 +133,9 @@ fi
 
 /scripts/run-pre-start.sh controller "$CONFIG_PATH"
 
-# Start controller in background
-gosu clusterio npx clusteriocontroller run --config "$CONFIG_PATH" &
+# Start controller in background. Run the bin directly, not via npx: npm exec does not
+# forward SIGTERM, so the controller would be killed without saving its data.
+gosu clusterio /clusterio/node_modules/.bin/clusteriocontroller run --config "$CONFIG_PATH" &
 CONTROLLER_PID=$!
 
 # Forward signals to the controller process for graceful shutdown

@@ -15,7 +15,7 @@ for(let i=0;i<flags.length;i++) {
     options[key.slice(2)]=flags[++i];
   } else throw Error("Unknown option "+key);
 }
-const cases=["lifecycle","rotation","overrides","saved-identity","hook-identity","zero-id","failures","upgrade"];
+const cases=["lifecycle","shutdown","rotation","overrides","saved-identity","hook-identity","zero-id","failures","upgrade"];
 assert.ok(options.case==="all" || cases.includes(options.case), "Unknown acceptance case");
 const expected=options.plugins==="none"?[]:options.plugins.split(",").sort();
 const run="cd-smoke-"+randomUUID().slice(0,12), label="clusterio-docker.smoke";
@@ -140,6 +140,20 @@ try {
     const port=docker("port",ctl,"8080/tcp");assert.match(port,/^127\.0\.0\.1:\d+$/);
     const response=await fetch("http://"+port+"/static/keep",{signal:AbortSignal.timeout(10000)});
     assert.equal(response.status,200);assert.equal(await response.text(),"retained");
+  });
+  await scenario("shutdown",async()=>{
+    // Changed well inside the 60s autosave interval, so only a graceful stop can persist it.
+    const name="graceful-"+run;
+    control("controller","config","set","controller.name",name);
+    for(const target of [ctl,host]) {
+      const started=Date.now();docker("stop","-t","60",target);
+      const state=JSON.parse(docker("inspect",target))[0].State;
+      const logs=spawnSync("docker",["logs","--tail","200",target],{encoding:"utf8",timeout:15000,maxBuffer:1048576});
+      assert.match(String(logs.stdout)+String(logs.stderr),/Caught termination, shutting down/,target+" did not receive SIGTERM");
+      assert.notEqual(state.ExitCode,137,target+" was killed after "+(Date.now()-started)+"ms instead of stopping");
+    }
+    docker("start",ctl);await health(ctl);docker("start",host);await health(host);
+    assert.equal(local(ctl,"controller","config","show","controller.name"),name);
   });
   await scenario("rotation",async()=>{
     const old=token(1), next=control("host","generate-token","--id","1");
