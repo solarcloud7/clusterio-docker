@@ -35,6 +35,8 @@ x-host-base: &host-base
     clusterio-controller:
       condition: service_healthy
   restart: unless-stopped
+  # Stopping a host stops and saves every instance first; allow time for large saves.
+  stop_grace_period: 120s
   # To use external plugins, add to each host's volumes:
   # - ./plugins:/clusterio/external_plugins
 
@@ -63,6 +65,7 @@ services:
     networks:
       - clusterio-net
     restart: unless-stopped
+    stop_grace_period: 30s
     healthcheck:
       test: ["CMD", "curl", "-sf", "http://localhost:${CONTROLLER_HTTP_PORT:-8080}/"]
       interval: 10s

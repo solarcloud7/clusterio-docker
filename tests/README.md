@@ -29,6 +29,7 @@ Choose a single case with `--case NAME`. Omitting it runs every case:
 | Case | Contract |
 |---|---|
 | lifecycle | Fresh boot, non-root hooks, recreation, persisted configuration/mods/assets/logs, served asset bytes |
+| shutdown | `docker stop` reaches the controller and host processes (graceful shutdown, no kill) and a controller setting changed just before the stop survives |
 | rotation | Explicit token wins over a stale mounted token; omitting the override restores file priority; unrelated configuration survives |
 | overrides | Explicit URL/port changes apply; omitted inputs preserve saved values |
 | saved-identity | A renamed container does not change saved identity or confuse readiness |

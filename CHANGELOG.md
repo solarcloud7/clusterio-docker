@@ -11,6 +11,12 @@ change notice: container → sha → this file.
 Format: `## YYYY-MM-DD` heading + short bullets. Always state the Clusterio /
 Factorio versions when they change.
 
+## 2026-09-27
+
+- `docker stop` now shuts the controller and host down gracefully: both run the Clusterio
+  binary directly instead of through `npx`, which did not forward SIGTERM, so the controller
+  lost recent data and hosts killed instances without saving. Compose allows 30s/120s to stop.
+
 ## 2026-09-10
 
 - Reconcile explicit host token, controller URL and port overrides without deleting
