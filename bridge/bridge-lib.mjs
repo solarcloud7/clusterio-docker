@@ -38,9 +38,9 @@ export function ipToInt(ip) {
 
 export function parseCidrs(raw) {
 	return raw.split(",").map((s) => s.trim()).filter(Boolean).map((entry) => {
-		const [ip, bitsRaw] = entry.includes("/") ? entry.split("/", 2) : [entry, "32"];
-		const bits = Number(bitsRaw);
-		const base = ipToInt(ip);
+		const match = /^([0-9.]+)(?:\/(\d{1,2}))?$/.exec(entry);
+		const bits = match ? Number(match[2] ?? "32") : NaN;
+		const base = match ? ipToInt(match[1]) : null;
 		if (base === null || !Number.isInteger(bits) || bits < 0 || bits > 32) {
 			throw new Error(`Invalid BRIDGE_ALLOWED_CIDRS entry: ${entry}`);
 		}

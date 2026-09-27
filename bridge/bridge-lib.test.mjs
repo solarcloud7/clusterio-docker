@@ -45,6 +45,12 @@ test("parseCidrs accepts CIDRs and bare IPs, throws on malformed entries", () =>
 	assert.throws(() => parseCidrs("10.0.0.0/-1"), /Invalid BRIDGE_ALLOWED_CIDRS/);
 	assert.throws(() => parseCidrs("10.0.0.0/abc"), /Invalid BRIDGE_ALLOWED_CIDRS/);
 	assert.throws(() => parseCidrs("10.0.0.0/24,garbage"), /Invalid BRIDGE_ALLOWED_CIDRS/);
+	// an empty or extra prefix must not collapse to /0 (allow every peer) or be silently truncated
+	for (const typo of ["172.31.50.10/", "172.31.50.10/ ", "172.31.50.10//32", "172.31.50.10/32/8", "/24", "172.31.50.10/+8", "172.31.50.10/1e1"]) {
+		assert.throws(() => parseCidrs(typo), /Invalid BRIDGE_ALLOWED_CIDRS/, typo);
+	}
+	assert.equal(cidrAllowed("203.0.113.7", parseCidrs("172.31.50.10/32")), false);
+	assert.equal(cidrAllowed("172.31.50.10", parseCidrs("172.31.50.10")), true);
 });
 
 test("cidrAllowed: empty allowlist is deliberately allow-all (fail-open layer)", () => {
