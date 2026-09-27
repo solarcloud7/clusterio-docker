@@ -145,15 +145,28 @@ try {
     // Changed well inside the 60s autosave interval, so only a graceful stop can persist it.
     const name="graceful-"+run;
     control("controller","config","set","controller.name",name);
-    for(const target of [ctl,host]) {
+    const stop=target=>{
       const started=Date.now();docker("stop","-t","60",target);
-      const state=JSON.parse(docker("inspect",target))[0].State;
       const logs=spawnSync("docker",["logs","--tail","200",target],{encoding:"utf8",timeout:15000,maxBuffer:1048576});
-      assert.match(String(logs.stdout)+String(logs.stderr),/Caught termination, shutting down/,target+" did not receive SIGTERM");
-      assert.notEqual(state.ExitCode,137,target+" was killed after "+(Date.now()-started)+"ms instead of stopping");
-    }
-    docker("start",ctl);await health(ctl);docker("start",host);await health(host);
+      return {target,ms:Date.now()-started,exitCode:JSON.parse(docker("inspect",target))[0].State.ExitCode,
+        text:String(logs.stdout)+String(logs.stderr)};
+    };
+    const assertGraceful=result=>{
+      assert.match(result.text,/Caught termination, shutting down/,result.target+" did not receive SIGTERM");
+      assert.equal(result.exitCode,0,result.target+" exited "+result.exitCode+" after "+result.ms+"ms instead of shutting down cleanly");
+    };
+    for(const target of [ctl,host]) assertGraceful(stop(target));
+    docker("start",ctl);await health(ctl);
     assert.equal(local(ctl,"controller","config","show","controller.name"),name);
+    // Control: a host whose shutdown rejects must fail the same check.
+    const fault=run+"-fault-host", preload=join(directory,"fail-shutdown.cjs");
+    writeFileSync(preload,'require("/clusterio/node_modules/@clusterio/host/dist/node/src/Host.js").default.prototype.shutdown=async()=>{throw new Error("injected shutdown failure");};\n');
+    create(fault,report.images.host,[...hostArgs(),"-e","NODE_OPTIONS=--require /tmp/fail-shutdown.cjs"]);
+    copyHook(fault);docker("cp",preload,fault+":/tmp/fail-shutdown.cjs");docker("start",fault);await health(fault);
+    const failed=stop(fault);remove(fault);
+    assert.match(failed.text,/Error during shutdown/,"the shutdown fault was not injected");
+    assert.throws(()=>assertGraceful(failed),/exited 1 /,"a failed shutdown must not pass as graceful");
+    docker("start",host);await health(host);
   });
   await scenario("rotation",async()=>{
     const old=token(1), next=control("host","generate-token","--id","1");
