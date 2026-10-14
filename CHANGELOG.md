@@ -37,11 +37,21 @@ Factorio versions when they change.
   `docs/devs/plugin-migration-to-2.0.md`.
 - Entrypoints create config files explicitly (`config create`): in 2.0 `config set`/`list`
   against a missing file fail instead of initialising it. `create-ctl-config` writes the shared
-  ctl config directly (`--output`). The alpha dev-warning banner is gone upstream, so its
-  build-time patch and the `CLUSTERIO_SUPPRESS_DEV_WARNING` env var are removed.
+  ctl config directly (`--output`), and the entrypoint then pins its `ctl.controller_url` to
+  the loopback address — Clusterio bakes `controller.public_url` into it, which the controller
+  container itself may not reach (the host guard derives its own copy from `CONTROLLER_URL`).
+  The alpha dev-warning banner is gone upstream, so its build-time patch and the
+  `CLUSTERIO_SUPPRESS_DEV_WARNING` env var are removed.
 - Fix (pre-existing, not a 2.0 regression): `CONTROLLER_PUBLIC_ADDRESS` now sets
   `controller.public_url`. The entrypoint set a nonexistent `controller.public_address`
   field, which aborted the first run whenever the variable was set.
+
+## 2026-09-30
+
+- The host removes stale lock files at startup, as the controller already did. The host
+  runs as PID 1, so a killed host left a lock naming PID 1, which is alive in every new
+  container: the host refused to start ("a valid lock file exists") until the file was
+  deleted by hand.
 
 ## 2026-09-27
 

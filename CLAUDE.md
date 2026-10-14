@@ -60,7 +60,7 @@ clusterio-docker/
 #### Controller (`controller-entrypoint.sh`)
 
 ```
-1. Create data dirs, fix permissions
+1. Create data dirs, fix permissions, remove stale lock files from an unclean stop
 2. Install external plugins (npm install if mounted)
 3. FIRST_RUN check: does config-controller.json exist on the data volume?
    ├── YES → Skip to step 4
@@ -86,7 +86,7 @@ clusterio-docker/
 #### Host (`host-entrypoint.sh`)
 
 ```
-1. Create data dirs, fix permissions
+1. Create data dirs, fix permissions, remove stale lock files from an unclean stop
 2. Install external plugins (npm install if mounted)
 3. Pre-cache seed mods (copy from seed-mods mount → host mods dir)
 4. Runtime client download (if FACTORIO_USERNAME + FACTORIO_TOKEN set, no client yet, SKIP_CLIENT!=true)
