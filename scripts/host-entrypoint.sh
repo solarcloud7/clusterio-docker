@@ -199,7 +199,7 @@ boot_race_guard() {
     # for (found on a live host dated weeks after creation).
     local rc=0
     _boot_race_guard_impl || rc=$?
-    rm -f "$GUARD_CTL_CONFIG"
+    rm -f "$GUARD_CTL_CONFIG" "$GUARD_CTL_CONFIG.tmp"
     # Logged AFTER the rm so this line is a real barrier: the impl's own
     # "complete" fires before cleanup, so anything waiting on that would race
     # the removal. Wait on this instead.
@@ -220,16 +220,9 @@ _boot_race_guard_impl() {
         fi
         sleep 5
     done
-    # Accept either key set — control.* (alpha images, until the controller migrates
-    # the shared file) or ctl.* (Clusterio 2.0) — and emit the 2.0 names.
-    if ! node -e '
-        const fs = require("fs");
-        const c = {};
-        for (const [key, value] of Object.entries(JSON.parse(fs.readFileSync(process.argv[1], "utf8"))))
-            c[key.replace(/^control\./, "ctl.")] = value;
-        c["ctl.controller_url"] = process.argv[3];
-        fs.writeFileSync(process.argv[2], JSON.stringify(c, null, "\t"));
-    ' "$CONTROL_CONFIG" "$GUARD_CTL_CONFIG" "$GUARD_CONTROLLER_URL" 2>/dev/null; then
+    # Derive a copy with Clusterio 2.0 key names (ctl.*; control.* from an alpha image
+    # is renamed until the controller migrates the shared file) and a host-reachable URL.
+    if ! node /scripts/ctl-config.cjs derive "$CONTROL_CONFIG" "$GUARD_CTL_CONFIG" "$GUARD_CONTROLLER_URL" 2>/dev/null; then
         guard_log "could not derive a host-reachable control config — skipping"
         return 0
     fi

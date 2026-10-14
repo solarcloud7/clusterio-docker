@@ -422,16 +422,23 @@ The docker-compose setup includes an optional (commented-out) Prometheus contain
 Mint a scrape token for a dedicated user (a name no player can claim, e.g. starting with `#`):
 
 ```bash
-docker exec clusterio-controller npx clusterioctl --config /clusterio/tokens/config-control.json role create Prometheus --permissions core.controller.metrics
-docker exec clusterio-controller npx clusterioctl --config /clusterio/tokens/config-control.json user create '#prometheus'
-docker exec clusterio-controller npx clusterioctl --config /clusterio/tokens/config-control.json user set-roles '#prometheus' Prometheus
-docker exec clusterio-controller npx clusteriocontroller --config /clusterio/data/config-controller.json bootstrap generate-user-token '#prometheus'
+docker exec --user clusterio clusterio-controller npx clusterioctl --config /clusterio/tokens/config-control.json role create Prometheus --permissions core.controller.metrics
+docker exec --user clusterio clusterio-controller npx clusterioctl --config /clusterio/tokens/config-control.json user create '#prometheus'
+docker exec --user clusterio clusterio-controller npx clusterioctl --config /clusterio/tokens/config-control.json user set-roles '#prometheus' Prometheus
+# wait for the controller's next autosave (controller.autosave_interval, 60 s) — or restart it — then:
+docker exec --user clusterio clusterio-controller npx clusteriocontroller --config /clusterio/data/config-controller.json bootstrap generate-user-token '#prometheus'
 ```
+
+The last command is a separate process that reads `users.json` from disk, and a user created
+through `clusterioctl` only reaches that file on the controller's next autosave — hence the wait.
+Run all four as `clusterio` so the bootstrap process does not leave root-owned log files behind.
 
 ### Configuration
 
 Edit [scripts/prometheus.yml](scripts/prometheus.yml) to customize scrape targets. The sample
-reads the token from a file mounted into the Prometheus container (or use `credentials: <token>`):
+reads the token from a file mounted into the Prometheus container (or use `credentials: <token>`).
+Create that file **before** uncommenting the Prometheus service — Docker turns a missing bind-mount
+source into a directory. `*.token` files are gitignored:
 
 ```yaml
 scrape_configs:

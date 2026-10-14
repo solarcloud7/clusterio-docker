@@ -5,6 +5,9 @@ set -eo pipefail
 DATA_DIR="/clusterio/data"
 CONFIG_PATH="$DATA_DIR/config-controller.json"
 TOKENS_DIR="/clusterio/tokens"
+# Cluster-ADMIN ctl config shared with the hosts (SECURITY.md). The filename is this
+# image's token-exchange contract; its keys follow Clusterio 2.0 (ctl.*).
+CONTROL_CONFIG="$TOKENS_DIR/config-control.json"
 EXTERNAL_PLUGINS_DIR="/clusterio/external_plugins"
 SEED_DATA_DIR="/clusterio/seed-data"
 
@@ -94,19 +97,22 @@ if [ ! -f "$CONFIG_PATH" ]; then
     gosu clusterio npx clusteriocontroller --log-level error bootstrap create-admin "$INIT_CLUSTERIO_ADMIN" --config "$CONFIG_PATH"
   fi
 
-  # Generate control config (token) for API access. The filename is this image's
-  # token-exchange contract (hosts, CI and tooling read config-control.json), so it
-  # stays even though Clusterio 2.0's default became config-ctl.json; only the keys
-  # inside follow upstream (ctl.*). Clusterio writes it 0600 as clusterio (gosu) —
-  # the ownership matters: hosts read it over the shared volume as the same uid.
-  # (This token is cluster-ADMIN — see SECURITY.md.)
-  CONTROL_CONFIG="$TOKENS_DIR/config-control.json"
+  # Generate control config (token) for API access. The filename stays config-control.json
+  # even though Clusterio 2.0's default became config-ctl.json (hosts, CI and tooling read
+  # it); only the keys inside follow upstream (ctl.*). Clusterio writes it 0600 as
+  # clusterio (gosu) — the ownership matters: hosts read it over the shared volume as the
+  # same uid.
   echo "Generating control config for API access..."
   gosu clusterio npx clusteriocontroller --log-level error bootstrap create-ctl-config "$INIT_CLUSTERIO_ADMIN" --output "$CONTROL_CONFIG" --config "$CONFIG_PATH"
   if [ ! -s "$CONTROL_CONFIG" ]; then
     echo "ERROR: create-ctl-config did not produce $CONTROL_CONFIG — cannot provision API token" >&2
     exit 1
   fi
+  # create-ctl-config bakes ctl.controller_url from controller.public_url, which this
+  # container may not be able to reach (reverse proxy, no hairpin NAT) — and clusterioctl
+  # hangs on an unreachable controller instead of failing. Everything in this container
+  # dials loopback; the host guard derives its own copy from CONTROLLER_URL.
+  gosu clusterio npx clusterioctl --log-level error config set ctl.controller_url "http://localhost:${CONTROLLER_HTTP_PORT:-8080}/" --config "$CONTROL_CONFIG"
   chown clusterio:clusterio "$CONTROL_CONFIG"
   chmod 600 "$CONTROL_CONFIG"
   
@@ -132,20 +138,17 @@ fi
 # config minted by an alpha image still carries control.* keys, which 2.0's
 # clusterioctl ignores ("Missing URL and/or token"). Rename them in place — same
 # token, same file, idempotent — so existing token volumes keep working.
-CONTROL_CONFIG="$TOKENS_DIR/config-control.json"
 if [ -f "$CONTROL_CONFIG" ] && grep -q '"control\.controller_token"' "$CONTROL_CONFIG" \
    && ! grep -q '"ctl\.controller_token"' "$CONTROL_CONFIG"; then
   echo "Migrating $CONTROL_CONFIG keys from control.* to ctl.* (Clusterio 2.0)"
-  node -e '
-    const fs = require("fs");
-    const file = process.argv[1];
-    const migrated = {};
-    for (const [key, value] of Object.entries(JSON.parse(fs.readFileSync(file, "utf8"))))
-      migrated[key.replace(/^control\./, "ctl.")] = value;
-    fs.writeFileSync(file, JSON.stringify(migrated, null, "\t"));
-  ' "$CONTROL_CONFIG"
-  chown clusterio:clusterio "$CONTROL_CONFIG"
-  chmod 600 "$CONTROL_CONFIG"
+  # Atomic (tmp + rename): hosts may be reading this file over the shared volume.
+  # Non-fatal: a corrupt file only breaks ctl-dependent seeding, not the controller.
+  if node /scripts/ctl-config.cjs migrate "$CONTROL_CONFIG"; then
+    chown clusterio:clusterio "$CONTROL_CONFIG"
+    chmod 600 "$CONTROL_CONFIG"
+  else
+    echo "WARNING: could not migrate $CONTROL_CONFIG (unreadable JSON?) — clusterioctl-dependent seeding will fail until it is regenerated" >&2
+  fi
 fi
 
 # Static-cache patch (absorbed consumer fix): the controller serves /static with
@@ -175,7 +178,6 @@ echo "Controller is ready"
 # On first run, seed data via API (requires running controller)
 # Also re-attempt if a previous first run was interrupted (marker not written)
 SEED_MARKER="$DATA_DIR/.seed-complete"
-CONTROL_CONFIG="$TOKENS_DIR/config-control.json"
 
 # Resolve default mod pack ID (used by both first-run seeding and ongoing mod uploads)
 DEFAULT_MOD_PACK="${DEFAULT_MOD_PACK:-Base Game 2.1}"

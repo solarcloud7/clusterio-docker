@@ -114,7 +114,7 @@ RUN printf '{\n  "clusterioVersion": "%s",\n  "clusterioTarget": "%s",\n  "gitSh
     && chown clusterio:clusterio /clusterio/BUILD_INFO
 
 COPY --chmod=755 scripts/run-pre-start.sh /scripts/run-pre-start.sh
-COPY scripts/verify-cli.cjs scripts/check-plugin-resolution.cjs /scripts/
+COPY scripts/verify-cli.cjs scripts/check-plugin-resolution.cjs scripts/ctl-config.cjs /scripts/
 RUN mkdir -p /etc/clusterio/pre-start.d /clusterio/logs /clusterio/mods /clusterio/static \
     && chown clusterio:clusterio /clusterio/logs /clusterio/mods /clusterio/static
 COPY --chmod=755 scripts/stream-logs.sh /scripts/stream-logs.sh
