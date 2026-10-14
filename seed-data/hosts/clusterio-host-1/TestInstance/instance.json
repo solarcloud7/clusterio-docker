@@ -19,7 +19,7 @@
 		"non_blocking_saving": true
 	},
 	"global_chat.load_plugin": true,
-	"inventory_sync.load_plugin": false,
+	"player_sync.load_plugin": false,
 	"player_auth.load_plugin": false,
 	"research_sync.load_plugin": false,
 	"statistics_exporter.load_plugin": true,

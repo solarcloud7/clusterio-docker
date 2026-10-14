@@ -17,6 +17,7 @@ try {
     "--config", path.join(dir, "config.json"), "--plugin-list", path.join(dir, "plugins.json")];
   const run = (...command) => execFileSync(binary, [...args, ...command], {encoding: "utf8", timeout: 30000});
   const field = role + ".allow_remote_updates";
+  run("config", "create"); // Clusterio 2.0: explicit creation; `set` no longer initialises a missing file.
   run("config", "set", field, "false");
   assert.equal(run("config", "show", field).trim(), "false");
   run("config", "set", field, "true");

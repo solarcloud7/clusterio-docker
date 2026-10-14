@@ -210,10 +210,14 @@ _boot_race_guard_impl() {
         fi
         sleep 5
     done
+    # Accept either key set — control.* (alpha images, until the controller migrates
+    # the shared file) or ctl.* (Clusterio 2.0) — and emit the 2.0 names.
     if ! node -e '
         const fs = require("fs");
-        const c = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
-        c["control.controller_url"] = process.argv[3];
+        const c = {};
+        for (const [key, value] of Object.entries(JSON.parse(fs.readFileSync(process.argv[1], "utf8"))))
+            c[key.replace(/^control\./, "ctl.")] = value;
+        c["ctl.controller_url"] = process.argv[3];
         fs.writeFileSync(process.argv[2], JSON.stringify(c, null, "\t"));
     ' "$CONTROL_CONFIG" "$GUARD_CTL_CONFIG" "$GUARD_CONTROLLER_URL" 2>/dev/null; then
         guard_log "could not derive a host-reachable control config — skipping"

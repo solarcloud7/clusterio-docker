@@ -28,7 +28,10 @@ if ($LASTEXITCODE -ne 0) {
 # Parse the token from the JSON
 try {
     $Config = $ConfigJson | ConvertFrom-Json
-    $Token = $Config.'control.controller_token'
+    # Clusterio 2.0 renamed the ctl config keys control.* -> ctl.*; accept both.
+    $TokenProp = $Config.PSObject.Properties['ctl.controller_token']
+    if (-not $TokenProp) { $TokenProp = $Config.PSObject.Properties['control.controller_token'] }
+    $Token = if ($TokenProp) { $TokenProp.Value } else { $null }
     if ([string]::IsNullOrWhiteSpace($Token)) {
         throw "Token not found in config"
     }

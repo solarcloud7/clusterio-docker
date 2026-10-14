@@ -43,7 +43,7 @@ can't even reach its own deadline check (found via #24's instrumentation).
 repo**: no unbounded ctl calls in entrypoints, healthchecks, or CI, ever.
 
 ### 5. `create-ctl-config` bakes a controller-local URL (🛡)
-The generated `config-control.json` carries `control.controller_url=http://localhost:8080/` —
+The generated `config-control.json` carries `ctl.controller_url=http://localhost:8080/` (`control.controller_url` before Clusterio 2.0) —
 correct where it's generated, a **self-dial** from any other container. Combined with #4, a
 host using the shared config hangs forever instead of erroring.
 **Images**: cross-container consumers (the boot-race guard) derive a host-reachable copy,

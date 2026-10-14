@@ -3,13 +3,11 @@
 // dedup strip, keyword-gated auto-discovery, and controller load.
 // The "clusterio-plugin" keyword in package.json is LOAD-BEARING: without it
 // Clusterio's loadPluginList never registers the plugin and it silently no-ops.
-"use strict";
-
-module.exports = {
-	plugin: {
-		name: "ci_fixture",
-		title: "CI Fixture",
-		description: "Proves external plugin install + discovery + load in CI.",
-		controllerEntrypoint: "controller",
-	},
+// Clusterio 2.0 plugins are ES modules: the entrypoint path carries its .js
+// extension and the entrypoint module exports a default async function.
+export const plugin = {
+	name: "ci_fixture",
+	title: "CI Fixture",
+	description: "Proves external plugin install + discovery + load in CI.",
+	controllerEntrypoint: "controller.js",
 };

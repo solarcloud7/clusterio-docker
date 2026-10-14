@@ -6,9 +6,9 @@ How to use clusterio-docker images in a downstream project.
 
 | Tag | Source | Use Case |
 |-----|--------|----------|
-| `latest` / `main` | npm registry (`@clusterio/*`), pinned to **`2.0.0-alpha.27`** — **moves** as the docker layer rebuilds | Stable, published Clusterio (newest) |
-| `2.0.0-alpha.27` | Same as `latest` — the bundled Clusterio version; **moves** on rebuild | Track a Clusterio version |
-| `2.0.0-alpha.27.rN` | An **immutable** revision pin (cut from a git tag); `.rN` bumps for docker-layer fixes on the same Clusterio version | **Production — pin this** |
+| `latest` / `main` | npm registry (`@clusterio/*`), pinned to **`2.0.1`** — **moves** as the docker layer rebuilds | Stable, published Clusterio (newest) |
+| `2.0.1` | Same as `latest` — the bundled Clusterio version; **moves** on rebuild | Track a Clusterio version |
+| `2.0.1.rN` | An **immutable** revision pin (cut from a git tag); `.rN` bumps for docker-layer fixes on the same Clusterio version | **Production — pin this** |
 | `<branch>` | Built from fork branch `solarcloud7/clusterio:<branch>` on a **non-main branch push** (falls back to the fork's default branch, `master`). PRs into `main`, `main`, and tags build the `release` target. | Dormant `custom`/fork path (a `factorio-*` line when npm lags a new Factorio version) |
 
 ```yaml
@@ -26,7 +26,7 @@ image: ghcr.io/solarcloud7/clusterio-docker-host:latest
 
 > **Migrating off old `:1` / `:1.x` / `:1.x.y` tags:** the independent repo-SemVer tag axis
 > is **retired** — those tags are frozen at their last build and receive **no** further
-> updates. Re-pin to `:<version>.rN` (e.g. `:2.0.0-alpha.27.r1`).
+> updates. Re-pin to `:<version>.rN` (e.g. `:2.0.1.r1`).
 
 > **Migrating off `:2.0.0-alpha.27-r1` .. `-r4` (hyphen scheme):** these four were published
 > before a SemVer-precedence bug in the separator was caught (a hyphen makes `27-r1` sort as
@@ -127,6 +127,12 @@ plugins/
     └── info.js
 ```
 
+Plugins must target the Clusterio 2.0 plugin API: ES modules (`"type": "module"`), entrypoint
+paths with the `.js` extension in the plugin declaration, and default-function entrypoints
+(class exports still load with a deprecation warning). A CommonJS plugin only registers if
+its `plugin` export is detectable from the source (`module.exports = { plugin }`). See
+upstream's [migration guide](https://github.com/clusterio/clusterio/blob/v2.0.1/docs/devs/plugin-migration-to-2.0.md).
+
 ### Singleton Fix (Custom Builds)
 
 When using `CLUSTERIO_TARGET=custom` (monorepo layout), `npm install` for external plugins can install `@clusterio/lib` and `@clusterio/web_ui` locally into the plugin's `node_modules/`. This creates duplicate singletons — the plugin registers permissions/events in its copy while the controller reads from the monorepo copy, causing fatal crashes like:
@@ -174,7 +180,8 @@ seed-data/
 ## Selecting bundled plugins in release builds
 
 Both Dockerfiles accept `CLUSTERIO_PLUGINS`: `all` (the unchanged default), `none`,
-or a comma-separated selection of `global_chat,inventory_sync,player_auth,research_sync,statistics_exporter,subspace_storage`.
+or a comma-separated selection of `global_chat,player_sync,player_auth,research_sync,statistics_exporter,subspace_storage`
+(`inventory_sync`, the pre-2.0 name of `player_sync`, is rejected with a hint).
 
 ```sh
 docker build -f Dockerfile.controller --build-arg CLUSTERIO_PLUGINS=none -t my-controller .
@@ -187,7 +194,8 @@ build input, not a runtime environment switch. Published defaults remain unchang
 
 Clusterio discovers installed plugin packages automatically. A smaller plugin-list
 does not disable installed bundled plugins. Install your packaged plugins with
-normal npm in a derived image and verify the discovered set before starting saves.
+normal npm in a derived image (they must be 2.0 plugins — see External Plugins above)
+and verify the discovered set before starting saves.
 
 ## Host configuration precedence
 
@@ -256,6 +264,30 @@ the old container directories; a container's writable layer is not persistent st
    served assets and logs after startup; retain backups until acceptance is complete.
 
 The PR does not perform this migration on a running installation.
+
+## Upgrading to Clusterio 2.0 images
+
+Images from `2.0.1` bundle the first stable Clusterio 2.0 line. What changes for a consumer
+moving from a `2.0.0-alpha.27` image (details in `CHANGELOG.md`, 2026-10-14):
+
+- **`inventory_sync` is `player_sync`** (`@clusterio/plugin-player_sync`). Rename
+  `inventory_sync.*` fields in seed `instance.json` files and `inventory_sync` in
+  `CLUSTERIO_PLUGINS` (the old name is rejected with a hint). When `player_sync` is bundled,
+  Clusterio migrates an existing cluster's `inventory_sync.*` config fields, permissions and
+  data on load (the migration lives in the plugin); images built without it simply retain
+  the old fields as unknown.
+- **`/clusterio/tokens/config-control.json` carries `ctl.*` keys** (`ctl.controller_url`,
+  `ctl.controller_token`); the filename is unchanged. The controller rewrites an existing
+  file's `control.*` keys in place on boot (same token). Readers that parse the JSON must use
+  the new keys; the host boot-race guard accepts either.
+- **`/metrics` needs a token** for a user holding `core.controller.metrics` —
+  `scripts/prometheus.yml` has the role/user/token recipe.
+- **External and packaged plugins must be 2.0 plugins** (ES modules, `.js` entrypoint names,
+  default-function entrypoints); see External Plugins above.
+- **Config files are created explicitly.** Tooling that drives the native CLI against a config
+  path that does not exist yet must run `config create` first. Pre-start hooks are unaffected:
+  they run after the entrypoint has created the file.
+- Clusterio 2.0 requires Node 22+; the images run Node 24.
 
 ## Consumer verification
 

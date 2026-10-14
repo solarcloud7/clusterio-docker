@@ -6,7 +6,7 @@ on:
     # GitHub's single-star stops at '/'. That keeps feature branches from publishing
     # image tags. Pre-merge validation for release branches comes from pull_request below.
     branches: ['*']
-    # Immutable revision pins: git tag <CLUSTERIO_VERSION>.r<N> (e.g. 2.0.0-alpha.27.r1)
+    # Immutable revision pins: git tag <CLUSTERIO_VERSION>.r<N> (e.g. 2.0.1.r1)
     # → published verbatim on the release target. Replaces the retired v* SemVer tags.
     # NOTE: the separator before "r<N>" MUST be "." not "-". A hyphen makes "27-r1" a
     # single alphanumeric SemVer prerelease identifier, which SemVer-aware tooling (e.g.
@@ -74,7 +74,7 @@ jobs:
         run: echo "version=$(sed -nE 's/^ARG CLUSTERIO_VERSION=([^[:space:]]+).*/\1/p' Dockerfile.host | head -1)" >> "$GITHUB_OUTPUT"
 
       # CLAUDE.md's Release Process step 1 promises three files carry the version;
-      # -F because the dots in e.g. 2.0.0-alpha.27 are regex wildcards otherwise.
+      # -F because the dots in e.g. 2.0.1 are regex wildcards otherwise.
       # V arrives via env rather than ${{ }} spliced into the script body: it is
       # derived from Dockerfile.host, which a fork PR can edit.
       - name: Assert version references match Dockerfile
@@ -93,7 +93,7 @@ jobs:
           [ "$rc" -eq 0 ] \
             || { echo "Update the stale file(s) alongside the CLUSTERIO_VERSION bump (see CLAUDE.md Release Process step 1)."; exit 1; }
 
-      # A revision pin tag (e.g. 2.0.0-alpha.27.r1) must match the CLUSTERIO_VERSION
+      # A revision pin tag (e.g. 2.0.1.r1) must match the CLUSTERIO_VERSION
       # baked into the image — otherwise the immutable pin would lie about its contents.
       - name: Assert revision-pin tag matches CLUSTERIO_VERSION
         if: github.ref_type == 'tag'
@@ -259,7 +259,7 @@ jobs:
           HOST_CANDIDATE: ${{ fromJSON(steps.meta-host.outputs.json).tags[0] }}
         run: |
           node tests/consumer-smoke.mjs "$CONTROLLER_CANDIDATE" "$HOST_CANDIDATE" \
-            --plugins global_chat,inventory_sync,player_auth,research_sync,statistics_exporter,subspace_storage \
+            --plugins global_chat,player_sync,player_auth,research_sync,statistics_exporter,subspace_storage \
             --skip-package --previous-host ghcr.io/solarcloud7/clusterio-docker-host@sha256:98a66d7b39359408ebbb255ff44814b2920ab0fa30596a8a71a872b40df2e232
       - name: Retain candidate acceptance evidence
         if: always()

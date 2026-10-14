@@ -65,7 +65,7 @@ For a custom source test, use the existing canonical Clusterio checkout:
 
 ```sh
 python tools/build-custom-context.py ../clusterio --build
-node tests/consumer-smoke.mjs clusterio-custom-controller clusterio-custom-host --plugins global_chat,inventory_sync,player_auth,research_sync,statistics_exporter,subspace_storage --skip-package
+node tests/consumer-smoke.mjs clusterio-custom-controller clusterio-custom-host --plugins global_chat,player_sync,player_auth,research_sync,statistics_exporter,subspace_storage --skip-package
 ```
 
 The helper archives tracked source files and this repository's Docker build inputs;

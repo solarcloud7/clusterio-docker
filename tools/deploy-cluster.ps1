@@ -61,7 +61,6 @@ $timer = [System.Diagnostics.Stopwatch]::StartNew()
 $ScriptDir   = Split-Path -Parent $MyInvocation.MyCommand.Path
 $ProjectRoot = Split-Path -Parent $ScriptDir
 $SourceDir   = Join-Path $ProjectRoot "clusterio"
-$SuppressJS  = Join-Path $ProjectRoot "scripts" "suppress-dev-warning.js"
 $ComposeFile = Join-Path $ProjectRoot "docker-compose.yml"
 
 # Compiled output directories to deploy
@@ -232,11 +231,6 @@ foreach ($c in $containers) {
         docker exec $c chown -R clusterio:clusterio "/clusterio/$dp" 2>$null
     }
 
-    # Re-apply suppress-dev-warning patch (dist/ overwrite reverts build-time patch)
-    docker cp $SuppressJS "${c}:/tmp/suppress-dev-warning.js" 2>$null
-    docker exec -w /clusterio $c node /tmp/suppress-dev-warning.js 2>$null
-    docker exec $c rm -f /tmp/suppress-dev-warning.js 2>$null
-
     Write-Ok "$c — $copied dist dirs deployed ($("{0:N1}s" -f $deployTimer.Elapsed.TotalSeconds))"
 }
 
@@ -375,7 +369,10 @@ if (-not $NoRestart) {
     if ($LASTEXITCODE -eq 0 -and $tokenJson) {
         try {
             $tokenConfig = $tokenJson | ConvertFrom-Json
-            $adminToken = $tokenConfig.'control.controller_token'
+            # Clusterio 2.0 renamed the ctl config keys control.* -> ctl.*; accept both.
+            $tokenProp = $tokenConfig.PSObject.Properties['ctl.controller_token']
+            if (-not $tokenProp) { $tokenProp = $tokenConfig.PSObject.Properties['control.controller_token'] }
+            $adminToken = if ($tokenProp) { $tokenProp.Value } else { $null }
             if ($adminToken) {
                 Write-Step "🔑" "Admin Token:"
                 Write-Host "    $adminToken" -ForegroundColor White

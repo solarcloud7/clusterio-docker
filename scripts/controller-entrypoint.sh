@@ -56,11 +56,18 @@ if [ ! -f "$CONFIG_PATH" ]; then
     chown -R clusterio:clusterio "$DATA_DIR/database"
   fi
   
+  # Clusterio 2.0: config files are created explicitly. `config set` against a
+  # missing file now fails ("Failed to load") instead of initialising it, and
+  # `config create` is a no-op once the file exists.
+  gosu clusterio npx clusteriocontroller --log-level error config create --config "$CONFIG_PATH"
+
   # Configure paths relative to data volume
   gosu clusterio npx clusteriocontroller --log-level error config set controller.database_directory "$DATA_DIR/database" --config "$CONFIG_PATH"
   gosu clusterio npx clusteriocontroller --log-level error config set controller.http_port "${CONTROLLER_HTTP_PORT:-8080}" --config "$CONFIG_PATH"
   if [ -n "$CONTROLLER_PUBLIC_ADDRESS" ]; then
-    gosu clusterio npx clusteriocontroller --log-level error config set controller.public_address "$CONTROLLER_PUBLIC_ADDRESS" --config "$CONFIG_PATH"
+    # The field is controller.public_url; controller.public_address never existed,
+    # so this line used to abort the first run (set -e) whenever the variable was set.
+    gosu clusterio npx clusteriocontroller --log-level error config set controller.public_url "$CONTROLLER_PUBLIC_ADDRESS" --config "$CONFIG_PATH"
   fi
   if [ -n "$FACTORIO_USERNAME" ]; then
     gosu clusterio npx clusteriocontroller --log-level error config set controller.factorio_username "$FACTORIO_USERNAME" --config "$CONFIG_PATH"
@@ -87,24 +94,21 @@ if [ ! -f "$CONFIG_PATH" ]; then
     gosu clusterio npx clusteriocontroller --log-level error bootstrap create-admin "$INIT_CLUSTERIO_ADMIN" --config "$CONFIG_PATH"
   fi
 
-  # Generate control config (token) for API access
+  # Generate control config (token) for API access. The filename is this image's
+  # token-exchange contract (hosts, CI and tooling read config-control.json), so it
+  # stays even though Clusterio 2.0's default became config-ctl.json; only the keys
+  # inside follow upstream (ctl.*). Clusterio writes it 0600 as clusterio (gosu) —
+  # the ownership matters: hosts read it over the shared volume as the same uid.
+  # (This token is cluster-ADMIN — see SECURITY.md.)
   CONTROL_CONFIG="$TOKENS_DIR/config-control.json"
   echo "Generating control config for API access..."
-  gosu clusterio npx clusteriocontroller --log-level error bootstrap create-ctl-config "$INIT_CLUSTERIO_ADMIN" --config "$CONFIG_PATH"
-  # create-ctl-config writes config-control.json to the working directory.
-  # Fail with a clear message rather than a cryptic `mv` error if it's absent.
-  if [ -f /clusterio/config-control.json ]; then
-    mv /clusterio/config-control.json "$CONTROL_CONFIG"
-    # 0600, explicitly owned by clusterio. The chown is not optional: hosts read
-    # this over the shared volume as uid 1001, so a root-owned 0600 file would
-    # lock them out. Both images use the same clusterio uid, so 1001 works
-    # cross-container. (This token is cluster-ADMIN — see SECURITY.md.)
-    chown clusterio:clusterio "$CONTROL_CONFIG"
-    chmod 600 "$CONTROL_CONFIG"
-  else
-    echo "ERROR: create-ctl-config did not produce /clusterio/config-control.json — cannot provision API token" >&2
+  gosu clusterio npx clusteriocontroller --log-level error bootstrap create-ctl-config "$INIT_CLUSTERIO_ADMIN" --output "$CONTROL_CONFIG" --config "$CONFIG_PATH"
+  if [ ! -s "$CONTROL_CONFIG" ]; then
+    echo "ERROR: create-ctl-config did not produce $CONTROL_CONFIG — cannot provision API token" >&2
     exit 1
   fi
+  chown clusterio:clusterio "$CONTROL_CONFIG"
+  chmod 600 "$CONTROL_CONFIG"
   
   # Generate host tokens if HOST_COUNT is set (default: 0 for standalone usage)
   HOST_COUNT=${HOST_COUNT:-0}
@@ -122,6 +126,26 @@ if [ ! -f "$CONFIG_PATH" ]; then
       echo "  Token generated: clusterio-host-${HOST_ID}.token"
     done
   fi
+fi
+
+# Clusterio 2.0 renamed clusterioctl's config fields from control.* to ctl.*. A ctl
+# config minted by an alpha image still carries control.* keys, which 2.0's
+# clusterioctl ignores ("Missing URL and/or token"). Rename them in place — same
+# token, same file, idempotent — so existing token volumes keep working.
+CONTROL_CONFIG="$TOKENS_DIR/config-control.json"
+if [ -f "$CONTROL_CONFIG" ] && grep -q '"control\.controller_token"' "$CONTROL_CONFIG" \
+   && ! grep -q '"ctl\.controller_token"' "$CONTROL_CONFIG"; then
+  echo "Migrating $CONTROL_CONFIG keys from control.* to ctl.* (Clusterio 2.0)"
+  node -e '
+    const fs = require("fs");
+    const file = process.argv[1];
+    const migrated = {};
+    for (const [key, value] of Object.entries(JSON.parse(fs.readFileSync(file, "utf8"))))
+      migrated[key.replace(/^control\./, "ctl.")] = value;
+    fs.writeFileSync(file, JSON.stringify(migrated, null, "\t"));
+  ' "$CONTROL_CONFIG"
+  chown clusterio:clusterio "$CONTROL_CONFIG"
+  chmod 600 "$CONTROL_CONFIG"
 fi
 
 # Static-cache patch (absorbed consumer fix): the controller serves /static with
