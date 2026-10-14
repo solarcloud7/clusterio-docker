@@ -11,6 +11,41 @@ change notice: container → sha → this file.
 Format: `## YYYY-MM-DD` heading + short bullets. Always state the Clusterio /
 Factorio versions when they change.
 
+## 2026-10-14
+
+- **Clusterio `2.0.1`** (from `2.0.0-alpha.27`) — the first stable 2.0 line. Factorio target
+  unchanged (2.1 packs); the Node 24 base image already satisfies 2.0's Node ≥ 22. Upstream
+  notes: <https://github.com/clusterio/clusterio/releases/tag/v2.0.0> (and v2.0.1).
+- **Breaking (upstream rename): `inventory_sync` is now `player_sync`**
+  (`@clusterio/plugin-player_sync`; the old package has no 2.0 release). `CLUSTERIO_PLUGINS`
+  rejects `inventory_sync` with a hint. Seed `instance.json` fields are `player_sync.*`;
+  when `player_sync` is bundled, Clusterio migrates existing `inventory_sync.*` config
+  fields, permissions and data on load (the migration lives in the plugin).
+- **Breaking (upstream rename): keys inside `/clusterio/tokens/config-control.json` are
+  `ctl.controller_url` / `ctl.controller_token`** (were `control.*`). The filename is
+  unchanged. The controller rewrites an existing file's keys in place on boot (same token);
+  the host boot-race guard accepts either. Tooling that parsed `control.controller_token`
+  must read the new key (`tools/*.ps1` accept both).
+- **Breaking (upstream): `/metrics` requires a token** for a user holding
+  `core.controller.metrics` (401/403 otherwise). `scripts/prometheus.yml` documents the
+  role/user/token recipe and reads the token from a credentials file; its bogus
+  `clusterio-hosts` scrape job (hosts have no HTTP endpoint) is removed.
+- **Breaking (upstream): external plugins must be Clusterio 2.0 plugins** — ES modules whose
+  declared entrypoints carry the `.js` extension and export a default async function (class
+  plugins still load with a deprecation warning; a CommonJS `plugin` export is only detected
+  in the `module.exports = { plugin }` form). The CI fixture plugin is converted; see upstream
+  `docs/devs/plugin-migration-to-2.0.md`.
+- Entrypoints create config files explicitly (`config create`): in 2.0 `config set`/`list`
+  against a missing file fail instead of initialising it. `create-ctl-config` writes the shared
+  ctl config directly (`--output`), and the entrypoint then pins its `ctl.controller_url` to
+  the loopback address — Clusterio bakes `controller.public_url` into it, which the controller
+  container itself may not reach (the host guard derives its own copy from `CONTROLLER_URL`).
+  The alpha dev-warning banner is gone upstream, so its build-time patch and the
+  `CLUSTERIO_SUPPRESS_DEV_WARNING` env var are removed.
+- Fix (pre-existing, not a 2.0 regression): `CONTROLLER_PUBLIC_ADDRESS` now sets
+  `controller.public_url`. The entrypoint set a nonexistent `controller.public_address`
+  field, which aborted the first run whenever the variable was set.
+
 ## 2026-09-30
 
 - The host removes stale lock files at startup, as the controller already did. The host

@@ -159,10 +159,11 @@ try {
     docker("start",ctl);await health(ctl);
     assert.equal(local(ctl,"controller","config","show","controller.name"),name);
     // Control: a host whose shutdown rejects must fail the same check.
-    const fault=run+"-fault-host", preload=join(directory,"fail-shutdown.cjs");
-    writeFileSync(preload,'require("/clusterio/node_modules/@clusterio/host/dist/node/src/Host.js").default.prototype.shutdown=async()=>{throw new Error("injected shutdown failure");};\n');
-    create(fault,report.images.host,[...hostArgs(),"-e","NODE_OPTIONS=--require /tmp/fail-shutdown.cjs"]);
-    copyHook(fault);docker("cp",preload,fault+":/tmp/fail-shutdown.cjs");docker("start",fault);await health(fault);
+    // Clusterio 2.0 is ESM: preload the fault with --import (an .mjs), not --require.
+    const fault=run+"-fault-host", preload=join(directory,"fail-shutdown.mjs");
+    writeFileSync(preload,'import Host from "/clusterio/node_modules/@clusterio/host/dist/node/src/Host.js";\nHost.prototype.shutdown=async()=>{throw new Error("injected shutdown failure");};\n');
+    create(fault,report.images.host,[...hostArgs(),"-e","NODE_OPTIONS=--import /tmp/fail-shutdown.mjs"]);
+    copyHook(fault);docker("cp",preload,fault+":/tmp/fail-shutdown.mjs");docker("start",fault);await health(fault);
     const failed=stop(fault);remove(fault);
     assert.match(failed.text,/Error during shutdown/,"the shutdown fault was not injected");
     assert.throws(()=>assertGraceful(failed),/exited 1 /,"a failed shutdown must not pass as graceful");

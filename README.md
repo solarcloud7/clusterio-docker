@@ -1,7 +1,7 @@
 # Clusterio Docker
 
 [![Docker Build](https://github.com/solarcloud7/clusterio-docker/actions/workflows/docker-build.yml/badge.svg)](https://github.com/solarcloud7/clusterio-docker/actions/workflows/docker-build.yml)
-[![Clusterio](https://img.shields.io/badge/clusterio-2.0.0--alpha.27-blue)](https://www.npmjs.com/package/@clusterio/controller)
+[![Clusterio](https://img.shields.io/badge/clusterio-2.0.1-blue)](https://www.npmjs.com/package/@clusterio/controller)
 [![Controller image](https://img.shields.io/badge/ghcr.io-controller-24292f?logo=github)](https://github.com/solarcloud7/clusterio-docker/pkgs/container/clusterio-docker-controller)
 [![Host image](https://img.shields.io/badge/ghcr.io-host-24292f?logo=github)](https://github.com/solarcloud7/clusterio-docker/pkgs/container/clusterio-docker-host)
 
@@ -59,15 +59,15 @@ for reproducibility:
 
 | Tag | Meaning | Mutability |
 |-----|---------|------------|
-| `:2.0.0-alpha.27.r1` | Clusterio version **+** docker revision | **immutable pin — pin this** |
-| `:2.0.0-alpha.27` | bundled Clusterio version (`main` builds) | moves as the docker layer rebuilds |
+| `:2.0.1.r1` | Clusterio version **+** docker revision | **immutable pin — pin this** |
+| `:2.0.1` | bundled Clusterio version (`main` builds) | moves as the docker layer rebuilds |
 | `:latest` | newest `main` build | moves |
 | `:main` | newest `main` build (alias of `:latest`) | moves |
 
 `.rN` (dot, not hyphen — a hyphen would make `27-r1` a single alphanumeric SemVer prerelease
 identifier, which SemVer-aware tooling ranks above any purely-numeric identifier like `28`,
 so `2.0.0-alpha.27-r1` would sort as newer than `2.0.0-alpha.28`) resets to `r1` on each
-Clusterio bump; you cut a `2.0.0-alpha.27.rN` git tag to mint an
+Clusterio bump; you cut a `2.0.1.rN` git tag to mint an
 immutable pin. `main` also publishes a convenience pair tag `:main-clusterio-<version>` (moves per
 rebuild). Custom/fork lines (see Branch model) publish under their branch name instead, e.g.
 `:factorio-2.2` + `:factorio-2.2-clusterio-<version>`.
@@ -240,7 +240,7 @@ docker run -d -p 34100-34199:34100-34199/udp \
 |----------|---------|-------------|
 | `INIT_CLUSTERIO_ADMIN` | *(required)* | Admin username for first run |
 | `CONTROLLER_HTTP_PORT` | `8080` | Web UI / API port |
-| `CONTROLLER_PUBLIC_ADDRESS` | *(unset)* | Public URL for external access (standalone usage) |
+| `CONTROLLER_PUBLIC_ADDRESS` | *(unset)* | Public URL for external access (sets `controller.public_url`; standalone usage) |
 | `HOST_COUNT` | `0` (standalone) / `2` (compose) | Number of host tokens to generate |
 | `DEFAULT_MOD_PACK` | `Base Game 2.1` (standalone) / `Space Age 2.1` (compose) | Default mod pack for new instances (first run only). Created automatically if not found. |
 | `DEFAULT_FACTORIO_VERSION` | `2.1` | Factorio version used when creating a new mod pack (only applies when `DEFAULT_MOD_PACK` doesn't match an existing pack) |
@@ -271,7 +271,7 @@ These are set at build time via `docker compose build` or `--build-arg`. In dock
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `CLUSTERIO_TARGET` | `release` | `release` (npm packages) or `custom` (build from the bundled `clusterio/` source) |
-| `CLUSTERIO_VERSION` | `2.0.0-alpha.27` | Pinned Clusterio version for the `release` target — all `@clusterio/*` packages install at this version. Ignored by `custom`. |
+| `CLUSTERIO_VERSION` | `2.0.1` | Pinned Clusterio version for the `release` target — all `@clusterio/*` packages install at this version. Ignored by `custom`. |
 | `NODE_IMAGE` | `node:24-bookworm-slim@sha256:…` | Base Node image, pinned by digest for reproducible builds |
 | `BAKE_FACTORIO_HEADLESS` | `false` | Bake Factorio headless into the image. **Default `false`** — images ship no Factorio (Wube's EULA forbids redistributing it); Clusterio downloads it at runtime. Set `true` only for private/offline images. |
 | `FACTORIO_HEADLESS_TAG` | `stable` | Factorio headless version to bake (only used when `BAKE_FACTORIO_HEADLESS=true`) |
@@ -415,11 +415,30 @@ The docker-compose setup includes an optional (commented-out) Prometheus contain
 ### Access
 
 - **Prometheus UI**: http://localhost:9090
-- **Controller metrics**: http://localhost:8080/metrics
+- **Controller metrics**: http://localhost:8080/metrics — **requires a token** (Clusterio 2.0):
+  a request without one gets `401`, a user without the `core.controller.metrics` permission
+  gets `403`. The controller gathers host metrics itself; hosts expose no HTTP endpoint.
+
+Mint a scrape token for a dedicated user (a name no player can claim, e.g. starting with `#`):
+
+```bash
+docker exec --user clusterio clusterio-controller npx clusterioctl --config /clusterio/tokens/config-control.json role create Prometheus --permissions core.controller.metrics
+docker exec --user clusterio clusterio-controller npx clusterioctl --config /clusterio/tokens/config-control.json user create '#prometheus'
+docker exec --user clusterio clusterio-controller npx clusterioctl --config /clusterio/tokens/config-control.json user set-roles '#prometheus' Prometheus
+# wait for the controller's next autosave (controller.autosave_interval, 60 s) — or restart it — then:
+docker exec --user clusterio clusterio-controller npx clusteriocontroller --config /clusterio/data/config-controller.json bootstrap generate-user-token '#prometheus'
+```
+
+The last command is a separate process that reads `users.json` from disk, and a user created
+through `clusterioctl` only reaches that file on the controller's next autosave — hence the wait.
+Run all four as `clusterio` so the bootstrap process does not leave root-owned log files behind.
 
 ### Configuration
 
-Edit [scripts/prometheus.yml](scripts/prometheus.yml) to customize scrape targets:
+Edit [scripts/prometheus.yml](scripts/prometheus.yml) to customize scrape targets. The sample
+reads the token from a file mounted into the Prometheus container (or use `credentials: <token>`).
+Create that file **before** uncommenting the Prometheus service — Docker turns a missing bind-mount
+source into a directory. `*.token` files are gitignored:
 
 ```yaml
 scrape_configs:
@@ -427,13 +446,8 @@ scrape_configs:
     static_configs:
       - targets: ['clusterio-controller:8080']
     metrics_path: /metrics
-
-  - job_name: 'clusterio-hosts'
-    static_configs:
-      - targets:
-          - 'clusterio-host-1:8080'
-          - 'clusterio-host-2:8080'
-    metrics_path: /metrics
+    authorization:
+      credentials_file: /etc/prometheus/clusterio-metrics.token
 ```
 
 ### Available Metrics
@@ -456,7 +470,7 @@ docker compose restart prometheus
 Both images include these official plugins:
 
 - `global_chat` - Cross-server chat
-- `inventory_sync` - Sync player inventories
+- `player_sync` - Sync player inventories and state between instances (named `inventory_sync` before Clusterio 2.0)
 - `player_auth` - Player authentication
 - `research_sync` - Sync research progress
 - `statistics_exporter` - Prometheus metrics
@@ -473,6 +487,13 @@ To use external Clusterio plugins, mount a plugins directory into the containers
 3. Plugins are automatically installed on container startup
 
 > **Important**: The plugins mount must NOT be read-only (`:ro`). The entrypoint runs `npm install` inside each plugin directory.
+
+> **Clusterio 2.0 plugins are ES modules.** Entrypoint paths in the plugin declaration carry
+> the `.js` extension (`controllerEntrypoint: "controller.js"`) and each entrypoint exports a
+> default async function; class exports still load with a deprecation warning. A CommonJS
+> plugin only registers if its `plugin` export is detectable from the source
+> (`module.exports = { plugin }`). See upstream's
+> [2.0 migration guide](https://github.com/clusterio/clusterio/blob/v2.0.1/docs/devs/plugin-migration-to-2.0.md).
 
 > **Developing a plugin?** See the [Plugin Development guide](docs/plugin-development.md) —
 > dev loop, the require-cache and boot-race traps, log locations, and a worked example.

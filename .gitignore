@@ -38,3 +38,6 @@ Thumbs.db
 /clusterio/
 
 ci-artifacts/
+
+# Credential files referenced by docker-compose.yml / scripts/prometheus.yml
+*.token

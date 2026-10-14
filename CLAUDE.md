@@ -13,9 +13,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with th
 
 **Note**: GHCR image names include `-docker-` because the CI derives them from the repository name (`clusterio-docker`).
 
-**Clusterio version**: `release` builds are pinned to **`2.0.0-alpha.27`** via the `CLUSTERIO_VERSION` build arg (see Build Arguments). Bump that one value to upgrade. `custom`/`factorio-*` branch builds compile from the bundled `clusterio/` source instead.
+**Clusterio version**: `release` builds are pinned to **`2.0.1`** via the `CLUSTERIO_VERSION` build arg (see Build Arguments). Bump that one value to upgrade. `custom`/`factorio-*` branch builds compile from the bundled `clusterio/` source instead.
 
-**Factorio 2.1 support**: npm Clusterio **`2.0.0-alpha.27`** natively runs Factorio **2.1.x** (e.g. `2.1.8`) — it carries `ApiVersions` `2.1`, the `clusterio_lib` `factorio_version: "2.1"` variant, the `Base Game/Space Age 2.1` default packs, and the `recycler` builtin. So the **default `release` target runs 2.1**; the `custom`/fork build is no longer required for it. (Historically it was: alpha.26 rejected 2.1-format mod `info.json` and lacked `recycler`, so 2.1 lived only in the `factorio-2.1.8` fork branch until alpha.27 upstreamed the fix.) The `custom` machinery is retained for the next Factorio line that npm may lag — see Branch model in README.md.
+**Clusterio 2.0 (stable)**: `2.0.1` is the first stable 2.0 line (ES modules, Node ≥ 22; the images run Node 24). Upstream breaking changes the images absorb: `inventory_sync` → `player_sync`, ctl config keys `control.*` → `ctl.*`, explicit `config create`, a token-gated `/metrics`, and plugin entrypoints with `.js` extensions — see Pitfalls #12–#14 and `CHANGELOG.md` (2026-10-14).
+
+**Factorio 2.1 support**: npm Clusterio has run Factorio **2.1.x** natively since **`2.0.0-alpha.27`** — it carries `ApiVersions` `2.1`, the `clusterio_lib` `factorio_version: "2.1"` variant, the `Base Game/Space Age 2.1` default packs, and the `recycler` builtin. So the **default `release` target runs 2.1**; the `custom`/fork build is no longer required for it. (Historically it was: alpha.26 rejected 2.1-format mod `info.json` and lacked `recycler`, so 2.1 lived only in the `factorio-2.1.8` fork branch until alpha.27 upstreamed the fix.) The `custom` machinery is retained for the next Factorio line that npm may lag — see Branch model in README.md.
 
 ## Repository Structure
 
@@ -31,8 +33,11 @@ clusterio-docker/
 │   ├── seed-instances.sh          # Instance creation, assignment, save upload, auto-start
 │   ├── seed-mods.sh               # Mod upload to controller
 │   ├── install-plugins.sh         # External plugin npm install
-│   ├── suppress-dev-warning.js    # Patches Clusterio alpha dev warning
-│   └── prometheus.yml             # Optional Prometheus scrape config
+│   ├── install-release.cjs        # Release target: npm install of @clusterio/* at CLUSTERIO_VERSION + CLUSTERIO_PLUGINS
+│   ├── configure-host.cjs         # Host config reconciliation through the native CLI
+│   ├── verify-cli.cjs             # Offline native CLI + plugin-resolution check (consumer verification)
+│   ├── run-pre-start.sh           # Runs /etc/clusterio/pre-start.d hooks as clusterio
+│   └── prometheus.yml             # Optional Prometheus scrape config (token-gated /metrics)
 ├── seed-data/                     # Example seed data (used by CI tests)
 │   ├── controller/database/       # users.json, roles.json
 │   ├── hosts/                     # Instance folders per host
@@ -61,19 +66,21 @@ clusterio-docker/
    ├── YES → Skip to step 4
    └── NO (first run):
        a. Copy seed database files (users.json, roles.json)
-       b. Configure controller (port, public address, factorio credentials)
+       b. `config create` (2.0: config files are created explicitly), then configure
+          controller (port, public URL, factorio credentials)
        c. Bootstrap admin user (idempotent — checks if already in DB)
-       d. Generate config-control.json (API token) → shared tokens volume
+       d. Generate config-control.json (API token; `ctl.*` keys) → shared tokens volume
        e. Generate host tokens → shared tokens volume
-4. Start controller in background, wait for healthcheck
-5. SEED check: FIRST_RUN=true OR .seed-complete marker missing?
-   ├── NO → Skip to step 6
+4. Migrate a pre-2.0 config-control.json (control.* → ctl.* keys, in place, idempotent)
+5. Start controller in background, wait for healthcheck
+6. SEED check: FIRST_RUN=true OR .seed-complete marker missing?
+   ├── NO → Skip to step 7
    └── YES:
        a. Set default mod pack
        b. seed-mods.sh: upload .zip mods to controller
        c. seed-instances.sh: create instances, assign to hosts, upload saves, start
        d. Write .seed-complete marker to data volume
-6. Wait on controller process (keep container alive)
+7. Wait on controller process (keep container alive)
 ```
 
 #### Host (`host-entrypoint.sh`)
@@ -94,7 +101,7 @@ clusterio-docker/
    │   └── MISMATCH → Delete config, fall through to reconfigure
    └── NO: Continue to step 7
 7. Wait for token (from env var or shared volume, up to 300s)
-8. Configure host (ID, name, controller URL, token, paths)
+8. Configure host via configure-host.cjs (fresh volume: `config create` first; then ID, name, controller URL, token, paths)
 9. Start host (exec)
 ```
 
@@ -147,7 +154,7 @@ When the controller volume is wiped but host volumes persist, the controller gen
 |----------|:--------:|---------|-------------|
 | `INIT_CLUSTERIO_ADMIN` | **Yes** | — | Admin username (first run only) |
 | `CONTROLLER_HTTP_PORT` | No | `8080` | Web UI / API port |
-| `CONTROLLER_PUBLIC_ADDRESS` | No | — | Public URL for external access |
+| `CONTROLLER_PUBLIC_ADDRESS` | No | — | Public URL for external access (sets `controller.public_url`) |
 | `HOST_COUNT` | No | `0` (standalone) / `2` (compose) | Host token count |
 | `EXPORT_HOST` | No | `1` (compose) | Host ID with game client for export-data. Set to `0` or empty to skip. |
 | `DEFAULT_MOD_PACK` | No | `Base Game 2.1` (standalone) / `Space Age 2.1` (compose) | Mod pack name for instances (created if not found; DLC auto-enabled if name contains "Space Age") |
@@ -172,7 +179,7 @@ When the controller volume is wiped but host volumes persist, the controller gen
 |----------|---------|-------------|
 | `CLUSTERIO_TARGET` | `release` | Build target: `release` (npm registry) or `custom` (local source in `clusterio/`) |
 | `CLUSTERIO_PLUGINS` | `all` | Release-only bundled selection: all, none, or comma-separated names. Custom builds use their source plugins. |
-| `CLUSTERIO_VERSION` | `2.0.0-alpha.27` | Pinned Clusterio version for the `release` target. All `@clusterio/*` packages install at this exact version. Ignored by the `custom` target. Bump to upgrade. |
+| `CLUSTERIO_VERSION` | `2.0.1` | Pinned Clusterio version for the `release` target. All `@clusterio/*` packages install at this exact version. Ignored by the `custom` target. Bump to upgrade. |
 | `NODE_IMAGE` | `node:24-bookworm-slim@sha256:…` | Base Node image, pinned by digest for reproducible builds. Refresh periodically for Debian/Node security patches (see comment in the Dockerfiles). |
 | `BAKE_FACTORIO_HEADLESS` | `false` | Bake the Factorio headless server into the image. **Default `false`** — the public image ships no Factorio (Wube's EULA forbids redistributing it) and Clusterio downloads the target version at runtime. Set `true` only for private/offline images you don't redistribute. |
 | `FACTORIO_HEADLESS_TAG` | `stable` | Factorio headless version to bake — **only used when `BAKE_FACTORIO_HEADLESS=true`** |
@@ -284,10 +291,10 @@ The GitHub Actions workflow (`.github/workflows/docker-build.yml`):
 Releases happen on the default branch (`main`) and build the **`release`** target
 (`CLUSTERIO_TARGET=release`, npm packages, pinned to `CLUSTERIO_VERSION`).
 
-1. **Bump the version** — set `ARG CLUSTERIO_VERSION` to the new Clusterio version in **both** `Dockerfile.controller` and `Dockerfile.host` (e.g. `2.0.0-alpha.27`). This single value pins the `@clusterio/*` npm packages **and** the published image tag. Update the version references in this file, `README.md`, and `docs/consumer-integration.md` to match (CI's version-assert gate fails otherwise).
+1. **Bump the version** — set `ARG CLUSTERIO_VERSION` to the new Clusterio version in **both** `Dockerfile.controller` and `Dockerfile.host` (e.g. `2.0.1`). This single value pins the `@clusterio/*` npm packages **and** the published image tag. Update the version references in this file, `README.md`, and `docs/consumer-integration.md` to match (CI's version-assert gate fails otherwise).
 2. **Open a PR → merge to `main`.** On a PR, CI builds the `release` target and runs the full integration suite (seeding, instance start, idempotent restart) — exactly what will publish. Merge once green.
-3. **Publish is automatic on the `main` push.** Both images publish to GHCR tagged `:latest` **and** `:<CLUSTERIO_VERSION>` (e.g. `:2.0.0-alpha.27`). The version tag is read from the `CLUSTERIO_VERSION` build arg, so it always matches what's installed. These are **moving** tags — a rebuild on the same Clusterio version overwrites them.
-4. **Cut an immutable revision pin** — to publish a reproducible pin, `git tag <CLUSTERIO_VERSION>.r<N>` (e.g. `2.0.0-alpha.27.r1`) and push the tag. CI's tag build publishes `:<CLUSTERIO_VERSION>.r<N>` verbatim on the `release` target. `.rN` resets to `r1` on each Clusterio bump; increment it for docker-layer rebuilds/fixes that ship on the same Clusterio version. See "Versioning" below.
+3. **Publish is automatic on the `main` push.** Both images publish to GHCR tagged `:latest` **and** `:<CLUSTERIO_VERSION>` (e.g. `:2.0.1`). The version tag is read from the `CLUSTERIO_VERSION` build arg, so it always matches what's installed. These are **moving** tags — a rebuild on the same Clusterio version overwrites them.
+4. **Cut an immutable revision pin** — to publish a reproducible pin, `git tag <CLUSTERIO_VERSION>.r<N>` (e.g. `2.0.1.r1`) and push the tag. CI's tag build publishes `:<CLUSTERIO_VERSION>.r<N>` verbatim on the `release` target. `.rN` resets to `r1` on each Clusterio bump; increment it for docker-layer rebuilds/fixes that ship on the same Clusterio version. See "Versioning" below.
 5. **Make packages public (one-time).** GHCR packages default to private. To allow public `docker pull`: GitHub → profile → Packages → each package (`clusterio-docker-controller`, `clusterio-docker-host`) → Package settings → Change visibility → Public.
 
 ### Versioning (Clusterio version + docker revision)
@@ -297,8 +304,8 @@ clusterio-docker's version **tracks the Clusterio version**, with a docker-layer
 SemVer (the old `vMAJOR.MINOR.PATCH` scheme is retired; the `v1.1.0` git tag stays in history but
 no new `v*` tags are cut). Tags carried by a build:
 
-- `:<CLUSTERIO_VERSION>` — e.g. `:2.0.0-alpha.27` — the bundled Clusterio version. **Moves** as the docker layer rebuilds.
-- `:<CLUSTERIO_VERSION>.rN` — e.g. `:2.0.0-alpha.27.r1` — the **immutable** pin (cut a git tag to mint one). `N` resets to `r1` on each Clusterio bump; bump it for docker-layer changes on the same Clusterio version.
+- `:<CLUSTERIO_VERSION>` — e.g. `:2.0.1` — the bundled Clusterio version. **Moves** as the docker layer rebuilds.
+- `:<CLUSTERIO_VERSION>.rN` — e.g. `:2.0.1.r1` — the **immutable** pin (cut a git tag to mint one). `N` resets to `r1` on each Clusterio bump; bump it for docker-layer changes on the same Clusterio version.
 - `:latest`, `:main` — newest `main` build. Move.
 
 **Separator is `.` not `-`**: a hyphen (`2.0.0-alpha.27-r1`) makes `27-r1` a single alphanumeric
@@ -348,7 +355,7 @@ git push  # → CI builds :my-feature images from the fork's branch
 
 Both images install these official plugins:
 - `global_chat` — Cross-server chat
-- `inventory_sync` — Sync player inventories
+- `player_sync` — Sync player inventories and state (named `inventory_sync` before Clusterio 2.0; `CLUSTERIO_PLUGINS` rejects the old name)
 - `player_auth` — Player authentication
 - `research_sync` — Sync research progress
 - `statistics_exporter` — Prometheus metrics
@@ -447,3 +454,18 @@ Notes: `Dockerfile.host` line 1 **must** stay `# syntax=docker/dockerfile:1` —
 **Symptom**: Host logs "A newer version of factorio is available (X) but must be manually downloaded"; headless never downloads/updates and isn't driven by the mod pack's Factorio version
 **Cause**: `host.factorio_directory` points at a **direct** install (a dir with `data/` + version file). Clusterio's runtime download (`checkForUpdates`) short-circuits on direct installs.
 **Fix**: `host.factorio_directory` must be a **non-direct, multi-version parent**. The entrypoint sets it to `/opt/factorio` — empty by default, so Clusterio downloads the target version into a versioned subdir at runtime. An optional baked headless (`BAKE_FACTORIO_HEADLESS=true`) goes into a **subdirectory** of `/opt/factorio`, never directly into it (that would re-disable runtime download). (The game **client** path for export hosts is intentionally a direct install and does not auto-update.)
+
+### 12. Clusterio 2.0 Plugins Are ES Modules With `.js` Entrypoint Names
+**Symptom**: An external plugin npm-installs and is listed, but never logs its load line; the controller/host reports `ERR_MODULE_NOT_FOUND` for an entrypoint, or "must export either a default function or ControllerPlugin class"
+**Cause**: Clusterio 2.0 loads plugins with `import()`. Entrypoint paths without the `.js` extension (`controllerEntrypoint: "controller"`) no longer resolve, and a CommonJS `plugin` export is only detected in the `module.exports = { plugin }` form.
+**Fix**: Convert the plugin per upstream `docs/devs/plugin-migration-to-2.0.md`: `"type": "module"`, `.js` in entrypoint names, default async function entrypoints (class exports still load with a deprecation warning). `seed-data/external_plugins/ci_fixture` is the minimal example.
+
+### 13. `config set` Against a Missing Config File Fails
+**Symptom**: `Failed to load config-*.json: ENOENT` from any `config set`/`list`/`show` on a fresh volume
+**Cause**: Clusterio 2.0 creates config files only on request (`config create` or `--create-config`); alpha versions initialised a missing file silently.
+**Fix**: The entrypoints, `configure-host.cjs` and `verify-cli.cjs` run `config create` first (a no-op once the file exists). Tooling that drives the native CLI against a new path must do the same; pre-start hooks run after the file exists.
+
+### 14. `/metrics` Requires a Token
+**Symptom**: Prometheus scrapes return `401` (no token) or `403` (user lacks the permission)
+**Cause**: Clusterio 2.0 gates `/metrics` behind the `core.controller.metrics` permission; hosts expose no HTTP metrics endpoint at all.
+**Fix**: Create a role with that permission and a dedicated user (`#prometheus`), mint a token with `clusteriocontroller bootstrap generate-user-token`, and pass it via `authorization:` in `scripts/prometheus.yml` (see the README's Prometheus section). Two traps in that recipe: `generate-user-token` is a separate process that reads `users.json` from disk, and a user created via `clusterioctl` only reaches the file on the controller's next autosave (`controller.autosave_interval`, 60 s) — wait or restart first; and run it as `clusterio` (`docker exec --user clusterio`), or the bootstrap process leaves root-owned log files that break the controller's log rotation.

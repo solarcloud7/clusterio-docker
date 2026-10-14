@@ -6,8 +6,8 @@
 # overlay:  docker compose -f docker-compose.yml -f docker-compose.dev.yml build
 #
 # Pin a specific image build by setting CLUSTERIO_IMAGE_TAG in .env — for
-# production prefer the immutable revision pin (e.g. 2.0.0-alpha.27.r1); the
-# moving tags (:latest, :2.0.0-alpha.27) are rebuilt in place.
+# production prefer the immutable revision pin (e.g. 2.0.1.r1); the
+# moving tags (:latest, :2.0.1) are rebuilt in place.
 #
 # To add more hosts:
 #   1. Increment HOST_COUNT in controller environment
@@ -122,6 +122,7 @@ services:
   #   hostname: prometheus
   #   volumes:
   #     - ./scripts/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+  #     - ./clusterio-metrics.token:/etc/prometheus/clusterio-metrics.token:ro   # scrape token: create the file FIRST (scripts/prometheus.yml) — Docker turns a missing bind source into a directory
   #     - prometheus-data:/prometheus
   #   ports:
   #     - "9090:9090"

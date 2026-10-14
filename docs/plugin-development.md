@@ -21,6 +21,14 @@ guide is for writing one.
    **`"clusterio-plugin"` in `keywords`**. That keyword is load-bearing — without it the
    plugin npm-installs cleanly and then **silently never loads**. CI pins this whole
    lifecycle with the `seed-data/external_plugins/ci_fixture` plugin.
+3. **Target Clusterio 2.0's plugin API.** Plugins are ES modules (`"type": "module"`), the
+   entrypoint paths in the plugin declaration carry the `.js` extension
+   (`controllerEntrypoint: "controller.js"`), and each entrypoint exports a default async
+   function that attaches hooks. Class exports still load but log a deprecation warning, and
+   a CommonJS plugin only registers if its `plugin` export is detectable from the source
+   (`module.exports = { plugin }`). Upstream's
+   [2.0 migration guide](https://github.com/clusterio/clusterio/blob/v2.0.1/docs/devs/plugin-migration-to-2.0.md)
+   covers the conversion; `ci_fixture` is a minimal worked example.
 
 ## The two rules that cost the most when unknown
 

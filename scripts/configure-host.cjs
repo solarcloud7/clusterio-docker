@@ -31,6 +31,8 @@ function nativeConfig(configPath) {
       return values;
     },
     write(key, value) { run(["set", key, "--stdin"], String(value)); },
+    // Clusterio 2.0 creates config files only on request; `list`/`set` fail on a missing file.
+    create() { run(["create"]); },
   };
 }
 function hostId(hostName) {
@@ -75,6 +77,7 @@ function plan(values, { fresh, configPath, hostName, factorioDirectory, tokenFil
 function reconcile(configPath, factorioDirectory, hostName, tokenFile, env = process.env) {
   const fresh = !fs.existsSync(configPath);
   const cli = nativeConfig(configPath);
+  if (fresh) cli.create();
   const values = cli.read(); // Never replace an unreadable saved config with defaults.
   const writes = plan(values, { fresh, configPath, hostName, factorioDirectory, tokenFile, env });
   applyChanges(cli, writes);

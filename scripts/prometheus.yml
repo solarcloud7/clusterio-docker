@@ -3,19 +3,29 @@ global:
   evaluation_interval: 15s
 
 scrape_configs:
-  # Clusterio Controller metrics (from statistics_exporter plugin)
+  # Clusterio Controller metrics — cluster-wide, gathered from the hosts over the
+  # Clusterio link (hosts expose no HTTP endpoint themselves); the
+  # statistics_exporter plugin adds per-instance game metrics.
+  #
+  # Clusterio 2.0: /metrics requires a token for a user holding the
+  # core.controller.metrics permission (401 without a token, 403 without the
+  # permission). Mint one on the controller — give the user a name no player can
+  # claim, such as one starting with '#':
+  #   docker exec --user clusterio clusterio-controller npx clusterioctl --config /clusterio/tokens/config-control.json role create Prometheus --permissions core.controller.metrics
+  #   docker exec --user clusterio clusterio-controller npx clusterioctl --config /clusterio/tokens/config-control.json user create '#prometheus'
+  #   docker exec --user clusterio clusterio-controller npx clusterioctl --config /clusterio/tokens/config-control.json user set-roles '#prometheus' Prometheus
+  #   (wait for the controller's next autosave — controller.autosave_interval, 60 s — or restart it:
+  #    generate-user-token is a separate process that reads users.json from disk)
+  #   docker exec --user clusterio clusterio-controller npx clusteriocontroller --config /clusterio/data/config-controller.json bootstrap generate-user-token '#prometheus'
+  # Write the token to a file, create it BEFORE starting Prometheus (Docker turns a
+  # missing bind source into a directory), mount it at the path below — or replace
+  # credentials_file with `credentials: <token>`. *.token files are gitignored.
   - job_name: 'clusterio-controller'
     static_configs:
       - targets: ['clusterio-controller:8080']
     metrics_path: /metrics
-
-  # Clusterio Host metrics
-  - job_name: 'clusterio-hosts'
-    static_configs:
-      - targets:
-          - 'clusterio-host-1:8080'
-          - 'clusterio-host-2:8080'
-    metrics_path: /metrics
+    authorization:
+      credentials_file: /etc/prometheus/clusterio-metrics.token
 
   # Prometheus self-monitoring
   - job_name: 'prometheus'
