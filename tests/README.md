@@ -84,6 +84,8 @@ Local acceptance on 2026-09-10 (reports use UTC):
 | Original PR host at `c385326` | `cd-smoke-112e620d-414` (saved identity), `cd-smoke-0c8b53fd-586` (zero-padded ID) | Failed: registered host never reached healthy readiness |
 | Revised full release, native alpha.27 | `cd-smoke-709da0bf-2ab` | All eight startup scenarios and native configuration checks passed |
 | Revised custom images from canonical source `9e727f9`, native alpha.25 | `cd-smoke-3434376f-94a` | All eight startup scenarios and native configuration checks passed |
+| 2026-10-14: Clusterio 2.0.1 release at `b5de653` (PR #55) — native 2.0.1 on both roles, six bundled plugins incl. `player_sync`, previous host alpha.27.r7 | `cd-smoke-25769f81-ae5` | All ten startup scenarios (incl. `stale-lock`, the ESM `--import` shutdown fault and the alpha.27 → 2.0.1 upgrade), packaged-plugin and native configuration checks passed |
+| 2026-10-14: the same test file against images built from `6cdf8ee` (pre-#54) | `cd-smoke-3d2dcaf0-ae9` | Failed only at `stale-lock` (`LockFileExistsError`: the host image predated #54); every earlier check passed |
 
 Every listed run cleaned up its disposable resources. Assertions read native effective
 configuration independently of startup messages. The two final runs include configuration
