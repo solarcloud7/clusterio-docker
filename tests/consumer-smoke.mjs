@@ -15,7 +15,7 @@ for(let i=0;i<flags.length;i++) {
     options[key.slice(2)]=flags[++i];
   } else throw Error("Unknown option "+key);
 }
-const cases=["lifecycle","shutdown","rotation","overrides","saved-identity","hook-identity","zero-id","failures","upgrade"];
+const cases=["lifecycle","shutdown","stale-lock","rotation","overrides","saved-identity","hook-identity","zero-id","failures","upgrade"];
 assert.ok(options.case==="all" || cases.includes(options.case), "Unknown acceptance case");
 const expected=options.plugins==="none"?[]:options.plugins.split(",").sort();
 const run="cd-smoke-"+randomUUID().slice(0,12), label="clusterio-docker.smoke";
@@ -167,6 +167,16 @@ try {
     assert.match(failed.text,/Error during shutdown/,"the shutdown fault was not injected");
     assert.throws(()=>assertGraceful(failed),/exited 1 /,"a failed shutdown must not pass as graceful");
     docker("start",host);await health(host);
+  });
+  await scenario("stale-lock",async()=>{
+    // A killed host leaves its lock naming PID 1: the restarted host itself, so never stale.
+    // Recreate without the fixture hook: its CLI write would clear the lock first (EPERM on
+    // root's PID 1 counts as stale), while an unchanged configuration writes nothing.
+    docker("kill",host);
+    const lock=join(directory,"config-host.json.lock");
+    docker("cp",host+":/clusterio/data/config-host.json.lock",lock);
+    assert.equal(readFileSync(lock,"utf8").trim(),"1","the killed host did not leave a lock naming PID 1");
+    remove(host);create(host,report.images.host,hostArgs());docker("start",host);await health(host);
   });
   await scenario("rotation",async()=>{
     const old=token(1), next=control("host","generate-token","--id","1");

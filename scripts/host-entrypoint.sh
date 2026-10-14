@@ -21,6 +21,16 @@ WAIT_INTERVAL=5
 mkdir -p "$DATA_DIR"
 chown -R clusterio:clusterio "$DATA_DIR"
 
+# Clean up stale lock files from an unclean shutdown (docker kill, OOM, a stop that
+# outlasted its grace period). clusteriohost runs as PID 1, so its lock names PID 1,
+# which in the restarted container is the new host itself: Clusterio's own staleness
+# check then refuses to start ("a valid lock file exists") on every attempt. Assumes
+# a single host per data volume (the supported topology), like the controller.
+if compgen -G "$DATA_DIR/*.lock" > /dev/null 2>&1; then
+  echo "Removing stale host lock file(s) from a previous run"
+  rm -f "$DATA_DIR"/*.lock
+fi
+
 # Honest readiness: the healthcheck's connected-marker is per-boot state —
 # clear any stale copy before the guard can re-establish it.
 rm -f /run/clusterio-connected

@@ -11,6 +11,13 @@ change notice: container → sha → this file.
 Format: `## YYYY-MM-DD` heading + short bullets. Always state the Clusterio /
 Factorio versions when they change.
 
+## 2026-09-30
+
+- The host removes stale lock files at startup, as the controller already did. The host
+  runs as PID 1, so a killed host left a lock naming PID 1, which is alive in every new
+  container: the host refused to start ("a valid lock file exists") until the file was
+  deleted by hand.
+
 ## 2026-09-27
 
 - `docker stop` now shuts the controller and host down gracefully: both run the Clusterio
