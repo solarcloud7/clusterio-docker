@@ -1,7 +1,7 @@
 # Clusterio Docker
 
 [![Docker Build](https://github.com/solarcloud7/clusterio-docker/actions/workflows/docker-build.yml/badge.svg)](https://github.com/solarcloud7/clusterio-docker/actions/workflows/docker-build.yml)
-[![Clusterio](https://img.shields.io/badge/clusterio-2.0.1-blue)](https://www.npmjs.com/package/@clusterio/controller)
+[![Clusterio](https://img.shields.io/badge/clusterio-2.0.2-blue)](https://www.npmjs.com/package/@clusterio/controller)
 [![Controller image](https://img.shields.io/badge/ghcr.io-controller-24292f?logo=github)](https://github.com/solarcloud7/clusterio-docker/pkgs/container/clusterio-docker-controller)
 [![Host image](https://img.shields.io/badge/ghcr.io-host-24292f?logo=github)](https://github.com/solarcloud7/clusterio-docker/pkgs/container/clusterio-docker-host)
 
@@ -59,15 +59,15 @@ for reproducibility:
 
 | Tag | Meaning | Mutability |
 |-----|---------|------------|
-| `:2.0.1.r1` | Clusterio version **+** docker revision | **immutable pin — pin this** |
-| `:2.0.1` | bundled Clusterio version (`main` builds) | moves as the docker layer rebuilds |
+| `:2.0.2.r1` | Clusterio version **+** docker revision | **immutable pin — pin this** |
+| `:2.0.2` | bundled Clusterio version (`main` builds) | moves as the docker layer rebuilds |
 | `:latest` | newest `main` build | moves |
 | `:main` | newest `main` build (alias of `:latest`) | moves |
 
 `.rN` (dot, not hyphen — a hyphen would make `27-r1` a single alphanumeric SemVer prerelease
 identifier, which SemVer-aware tooling ranks above any purely-numeric identifier like `28`,
 so `2.0.0-alpha.27-r1` would sort as newer than `2.0.0-alpha.28`) resets to `r1` on each
-Clusterio bump; you cut a `2.0.1.rN` git tag to mint an
+Clusterio bump; you cut a `2.0.2.rN` git tag to mint an
 immutable pin. `main` also publishes a convenience pair tag `:main-clusterio-<version>` (moves per
 rebuild). Custom/fork lines (see Branch model) publish under their branch name instead, e.g.
 `:factorio-2.2` + `:factorio-2.2-clusterio-<version>`.
@@ -271,7 +271,7 @@ These are set at build time via `docker compose build` or `--build-arg`. In dock
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `CLUSTERIO_TARGET` | `release` | `release` (npm packages) or `custom` (build from the bundled `clusterio/` source) |
-| `CLUSTERIO_VERSION` | `2.0.1` | Pinned Clusterio version for the `release` target — all `@clusterio/*` packages install at this version. Ignored by `custom`. |
+| `CLUSTERIO_VERSION` | `2.0.2` | Pinned Clusterio version for the `release` target — all `@clusterio/*` packages install at this version. Ignored by `custom`. |
 | `NODE_IMAGE` | `node:24-bookworm-slim@sha256:…` | Base Node image, pinned by digest for reproducible builds |
 | `BAKE_FACTORIO_HEADLESS` | `false` | Bake Factorio headless into the image. **Default `false`** — images ship no Factorio (Wube's EULA forbids redistributing it); Clusterio downloads it at runtime. Set `true` only for private/offline images. |
 | `FACTORIO_HEADLESS_TAG` | `stable` | Factorio headless version to bake (only used when `BAKE_FACTORIO_HEADLESS=true`) |
