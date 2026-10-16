@@ -11,6 +11,15 @@ change notice: container → sha → this file.
 Format: `## YYYY-MM-DD` heading + short bullets. Always state the Clusterio /
 Factorio versions when they change.
 
+## 2026-10-15
+
+- **Clusterio `2.0.2`** (from `2.0.1`) — upstream patch release. Web plugin
+  `controllerConnectionEvent` handlers receive the event name again (clusterio#1083);
+  installer fixes for plugin selection on Node 26 (clusterio#1082/#1084 — the installer is
+  not used by these images); documentation refresh. No entrypoint, build-script or interface
+  changes: the files the images depend on are identical between 2.0.1 and 2.0.2. Factorio
+  target unchanged (2.1 packs). First pin: `2.0.2.r1`.
+
 ## 2026-10-14
 
 - **Clusterio `2.0.1`** (from `2.0.0-alpha.27`) — the first stable 2.0 line. Factorio target
