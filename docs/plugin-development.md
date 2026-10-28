@@ -29,6 +29,12 @@ guide is for writing one.
    (`module.exports = { plugin }`). Upstream's
    [2.0 migration guide](https://github.com/clusterio/clusterio/blob/v2.0.1/docs/devs/plugin-migration-to-2.0.md)
    covers the conversion; `ci_fixture` is a minimal worked example.
+4. **Clusterio 2.0.3 changes for plugins.** `@clusterio/lib` uses `@sinclair/typebox` 0.34;
+   upstream asks plugins that use typebox to depend on `^0.34`. A plugin can declare the
+   `LuaUdp` feature (alongside `SavePatching` and `ScriptCommands`) to use `sendUdp` and
+   in-game `clusterio_api.send_udp`; Clusterio then rejects enabling its `<name>.load_plugin`
+   on an instance without `factorio.enable_lua_udp` (see
+   [seed-data.md](seed-data.md#instance-configuration)).
 
 ## The two rules that cost the most when unknown
 
