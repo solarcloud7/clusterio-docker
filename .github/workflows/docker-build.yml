@@ -291,6 +291,41 @@ jobs:
             awk '/^## /{n++} n==1' CHANGELOG.md
           } >> "$GITHUB_STEP_SUMMARY"
 
+  # Tag builds only: once `build` has pushed the pinned images, publish the GitHub
+  # Release with the top CHANGELOG.md entry as its notes. A separate job so `build`
+  # keeps read-only contents access. An existing release (a re-run, or one created
+  # by hand) is left unchanged.
+  release:
+    needs: build
+    if: github.ref_type == 'tag'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Create GitHub Release from the top CHANGELOG entry
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Release $TAG already exists — leaving it unchanged."
+            exit 0
+          fi
+          V=$(sed -nE 's/^ARG CLUSTERIO_VERSION=([^[:space:]]+).*/\1/p' Dockerfile.host | head -1)
+          ENTRY=$(awk '/^## /{n++; next} n==1' CHANGELOG.md)
+          [ -n "$V" ] && [ -n "$ENTRY" ] || { echo "::error::Could not read CLUSTERIO_VERSION or the top CHANGELOG.md entry."; exit 1; }
+          {
+            echo "Images: \`${REGISTRY}/${CONTROLLER_IMAGE}:${TAG}\` and \`${REGISTRY}/${HOST_IMAGE}:${TAG}\` — immutable pin on Clusterio **${V}**. Upstream notes: https://github.com/clusterio/clusterio/releases/tag/v${V}. Change notice (top entry of \`CHANGELOG.md\`):"
+            echo
+            printf '%s\n' "$ENTRY"
+          } > release-notes.md
+          gh release create "$TAG" --verify-tag --title "$TAG — Clusterio $V" --notes-file release-notes.md
+
   # Integration suite. Builds its own images from the same source (see "Build
   # images" below) rather than pulling the registry, so it depends only on the
   # cheap gates — `build` now waits on THIS job before publishing.

@@ -27,6 +27,9 @@ Factorio versions when they change.
   - External plugins using `@sinclair/typebox` should move to `^0.34` (upstream bumped it).
   No entrypoint, build-script or interface changes: the config fields and CLI commands the
   entrypoints use are unchanged (new fields and commands are additive). First pin: `2.0.3.r1`.
+- CI: tag builds create the GitHub Release once the pinned images are published, with the
+  top entry of this file as its notes (new `release` job; skips an existing release). No
+  image content change.
 
 ## 2026-10-15
 
