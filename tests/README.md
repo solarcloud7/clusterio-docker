@@ -89,6 +89,8 @@ Local acceptance on 2026-09-10 (reports use UTC):
 | 2026-10-15: Clusterio 2.0.2 release at `b2368b0` (PR #56) — native 2.0.2 on both roles, six bundled plugins, previous host alpha.27.r7 | `cd-smoke-c87a6fc6-e08` | All ten startup scenarios, packaged-plugin and native configuration checks passed |
 | 2026-10-28: Clusterio 2.0.3 release at `d2c0707` — native 2.0.3 on both roles, six bundled plugins, previous host alpha.27.r7 | `cd-smoke-ccf9692a-904` | All ten startup scenarios, packaged-plugin and native configuration checks passed |
 | 2026-10-28: the same images, `--case upgrade` with previous host `2.0.2.r1` | `cd-smoke-ebdf3be2-d17` | Failed in the fixture step, before the candidate ran: the harness writes previous-image configuration with `config set` and no `config create`, which a 2.0 CLI rejects on a missing file |
+| 2026-10-29: Clusterio 2.0.3 images at `b0c2cc1`, harness fixture runs `config create` first when the previous CLI supports it, `--case upgrade` with previous host alpha.27.r7 | `cd-smoke-f0d6b6e5-1d3` | Upgrade, packaged-plugin and native CLI checks passed; the fixture tolerates the pre-2.0 CLI's `Unknown argument: create` and lets `config set` create the file |
+| 2026-10-29: the same images and harness, `--case upgrade` with previous host `2.0.2.r1` | `cd-smoke-b82e8ad6-6a4` | Upgrade, packaged-plugin and native CLI checks passed: 2.0.2-written configuration survives candidate startup |
 
 Every listed run cleaned up its disposable resources. Assertions read native effective
 configuration independently of startup messages. The two final runs include configuration
