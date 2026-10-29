@@ -11,6 +11,23 @@ change notice: container → sha → this file.
 Format: `## YYYY-MM-DD` heading + short bullets. Always state the Clusterio /
 Factorio versions when they change.
 
+## 2026-10-28
+
+- **Clusterio `2.0.3`** (from `2.0.2`) — upstream feature release. Factorio target unchanged
+  (2.1 packs); all bundled `@clusterio/*` packages still require Node ≥ 22. Upstream notes:
+  <https://github.com/clusterio/clusterio/releases/tag/v2.0.3>. Relevant to these images:
+  - Fixes instances that start at the same time corrupting a shared Factorio download
+    (clusterio#1105) — the images download Factorio at runtime.
+  - New opt-in Lua UDP messaging (`factorio.enable_lua_udp`, `factorio.lua_udp_port`, default
+    off). It binds a localhost port inside the host container, so no port needs publishing.
+    Requires Factorio ≥ 2.1.10. No bundled plugin declares the `LuaUdp` feature.
+  - `player_sync` gains per-instance `player_sync.sync_*` options, all defaulting to `true`
+    (unchanged behaviour), and `clusterioctl inventory-sync` tools; `research_sync` gains a
+    cluster research queue; `clusterioctl note` is new.
+  - External plugins using `@sinclair/typebox` should move to `^0.34` (upstream bumped it).
+  No entrypoint, build-script or interface changes: the config fields and CLI commands the
+  entrypoints use are unchanged (new fields and commands are additive). First pin: `2.0.3.r1`.
+
 ## 2026-10-15
 
 - **Clusterio `2.0.2`** (from `2.0.1`) — upstream patch release. Web plugin

@@ -217,6 +217,14 @@ docker exec clusterio-host-1 cat /clusterio/data/instances/MyInstance/instance.j
 > their seeds. If any plugin does asynchronous on-tick work, set it `false` explicitly (the
 > seeder logs an INFO when an instance is created without it).
 
+Instance options added in Clusterio 2.0.3 are seeded like any other field:
+
+| Field | Default | Notes |
+|-------|---------|-------|
+| `factorio.enable_lua_udp` | `false` | UDP messaging between the host and the Factorio server. Required by plugins that declare the `LuaUdp` feature. Needs Factorio ≥ 2.1.10. |
+| `factorio.lua_udp_port` | `null` (random each start) | Port on localhost inside the host container — no Compose port mapping is needed. Give each instance on a host a different port if you set it. |
+| `player_sync.sync_controller`, `sync_force`, `sync_appearance`, `sync_inventories`, `sync_logistics`, `sync_quick_bar`, `sync_settings`, `sync_recipe_notifications` | `true` | Choose which parts of a player Player Sync covers on this instance. |
+
 ### Skipped Fields
 
 The following fields are **automatically skipped** during seeding because they are runtime or environment-specific:
